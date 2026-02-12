@@ -1,0 +1,42 @@
+services:
+  grobid:
+    image: lfoppiano/grobid:0.8.1
+    ports:
+      - "8070:8070"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8070/api/isalive"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8001:8001"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - SEMANTIC_SCHOLAR_API_KEY=${SEMANTIC_SCHOLAR_API_KEY:-}
+      - NCBI_API_KEY=${NCBI_API_KEY:-}
+      - UNPAYWALL_EMAIL=${UNPAYWALL_EMAIL:-}
+    depends_on:
+      grobid:
+        condition: service_healthy
+    volumes:
+      - refcheck-data:/root/.refcheck
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8001
+    depends_on:
+      - backend
+
+volumes:
+  refcheck-data:

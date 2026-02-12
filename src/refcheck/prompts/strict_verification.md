@@ -1,0 +1,1 @@
+<!-- Strict verification prompt template (V2: Tier 2) -->

@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+.cursor/
+.cursorrules
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Caches
+.cache/
+cache/
+.diskcache/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Data directories (user uploads, generated reports)
+data/
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node / Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Docker
+*.log
+
+# Test artifacts
+tests/fixtures/manuscripts/*.docx
+tests/fixtures/pdfs/*.pdf
+!tests/fixtures/manuscripts/.gitkeep
+!tests/fixtures/pdfs/.gitkeep
