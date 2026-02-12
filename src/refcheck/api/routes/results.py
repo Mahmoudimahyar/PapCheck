@@ -2,9 +2,15 @@
 
 import logging
 
-from fastapi import APIRouter, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Query
 
+from refcheck.api.routes.results_schemas import (
+    ClaimDetail,
+    OverrideRequest,
+    ResultItem,
+    ResultsResponse,
+    ResultsSummary,
+)
 from refcheck.models.claim import Claim
 from refcheck.models.verification import VerificationResult
 
@@ -14,51 +20,6 @@ logger = logging.getLogger(__name__)
 # In-memory stores populated by pipeline_runner
 _CLAIMS_STORE: dict[str, list[Claim]] = {}
 _VERIFICATION_STORE: dict[str, list[VerificationResult]] = {}
-
-
-class ResultsSummary(BaseModel):
-    """Summary of verification results."""
-
-    total: int = 0
-    supported: int = 0
-    partially_supported: int = 0
-    not_supported: int = 0
-    contradicted: int = 0
-    cannot_verify: int = 0
-
-
-class ClaimDetail(BaseModel):
-    """Claim info included in results response."""
-
-    manuscript_text: str = ""
-    extracted_claim: str = ""
-    claim_type: str = ""
-    priority: str = ""
-
-
-class ResultItem(BaseModel):
-    """Single result in the results response."""
-
-    claim_id: int
-    reference_id: int
-    verdict: str
-    confidence: float
-    evidence_quotes: list[str] = Field(default_factory=list)
-    reasoning: str = ""
-    tier: int = 1
-    source_coverage: str = "no_source"
-    needs_user_review: bool = False
-    claim: ClaimDetail = Field(default_factory=ClaimDetail)
-
-
-class ResultsResponse(BaseModel):
-    """Full paginated results response."""
-
-    summary: ResultsSummary
-    results: list[ResultItem]
-    total: int
-    page: int
-    per_page: int
 
 
 @router.get("/api/sessions/{session_id}/results")
@@ -76,19 +37,11 @@ async def get_results(
     claims = _CLAIMS_STORE.get(session_id, [])
     claims_by_id = {c.id: c for c in claims}
 
-    # Build summary from unfiltered results
     summary = _build_summary(verifications)
-
-    # Build result items
     items = _build_items(verifications, claims_by_id)
-
-    # Apply filters
     items = _apply_filters(items, verdict, priority, min_confidence)
-
-    # Sort
     items = _sort_items(items, sort)
 
-    # Paginate
     total = len(items)
     start = (page - 1) * per_page
     end = start + per_page
@@ -101,6 +54,37 @@ async def get_results(
         page=page,
         per_page=per_page,
     )
+
+
+@router.post("/api/sessions/{session_id}/results/{claim_id}/override")
+async def override_verdict(
+    session_id: str,
+    claim_id: int,
+    body: OverrideRequest,
+) -> ResultItem:
+    """Override a verification verdict for a specific claim."""
+    verifications = _VERIFICATION_STORE.get(session_id)
+    if not verifications:
+        raise HTTPException(404, f"Session {session_id} not found")
+
+    claims = _CLAIMS_STORE.get(session_id, [])
+    claims_by_id = {c.id: c for c in claims}
+
+    for i, v in enumerate(verifications):
+        if v.claim_id == claim_id:
+            original_v = v.verdict
+            original_c = v.confidence
+            verifications[i] = v.model_copy(update={
+                "verdict": body.verdict,
+                "user_override": True,
+                "user_override_reason": body.reason,
+                "needs_user_review": False,
+                "original_verdict": original_v,
+                "original_confidence": original_c,
+            })
+            return _build_items([verifications[i]], claims_by_id)[0]
+
+    raise HTTPException(404, f"Claim {claim_id} not found")
 
 
 def _build_summary(verifications: list[VerificationResult]) -> ResultsSummary:
@@ -139,6 +123,8 @@ def _build_items(
             tier=v.tier,
             source_coverage=v.source_coverage,
             needs_user_review=v.needs_user_review,
+            user_override=v.user_override,
+            user_override_reason=v.user_override_reason,
             claim=claim_detail,
         ))
     return items

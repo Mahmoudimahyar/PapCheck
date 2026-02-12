@@ -1,0 +1,11 @@
+{
+  "claim_id": 1,
+  "reference_id": 1,
+  "verdict": "supported",
+  "confidence": 0.88,
+  "evidence_quotes": ["Drug X was associated with a 30% reduction in all-cause mortality"],
+  "reasoning": "[Strict] The source explicitly confirms a 30% reduction, matching the manuscript claim.",
+  "tier": 2,
+  "source_coverage": "relevant_sections",
+  "needs_user_review": false
+}

@@ -50,6 +50,16 @@ class Reference(BaseModel):
     ] | None = None
     journal_url: str | None = None
 
+    # Duplicate detection (populated by parse_docx stage)
+    duplicate_of: int | None = None
+    is_supplementary: bool = False
+
+    # Retraction status (populated by retraction checking stage)
+    retraction_status: Literal[
+        "ok", "retracted", "corrected", "expression_of_concern", "unknown"
+    ] = "unknown"
+    retraction_detail: str = ""
+
 
 class ParsedManuscript(BaseModel):
     """Result of DOCX parsing."""

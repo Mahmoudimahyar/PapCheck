@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GapDashboard } from "@/components/refcheck/gap-dashboard";
 import { ReferenceTable } from "@/components/refcheck/reference-table";
+import { BreadcrumbNav } from "@/components/refcheck/breadcrumb-nav";
 import { getReferences } from "@/lib/api";
 import type { Reference } from "@/lib/types";
 
@@ -17,6 +18,7 @@ export default function ReviewPage({
   const { sessionId } = use(params);
   const [references, setReferences] = useState<Reference[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchAll() {
@@ -31,7 +33,7 @@ export default function ReviewPage({
         }
         setReferences(allRefs);
       } catch {
-        // ignore
+        setError("Failed to load references. Please try refreshing the page.");
       } finally {
         setLoading(false);
       }
@@ -42,44 +44,68 @@ export default function ReviewPage({
   const needsConfirm = references.filter((r) => r.source_status === "pending");
   const unmatched = references.filter((r) => r.source_status === "not_found");
 
-  if (loading) {
-    return <p className="text-muted-foreground">Loading references...</p>;
-  }
-
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold">Reference Review</h2>
-        <p className="text-sm text-muted-foreground">Session: {sessionId}</p>
+      <BreadcrumbNav sessionId={sessionId} current="review" />
+      {loading ? (
+        <LoadingSkeleton />
+      ) : error ? (
+        <div className="text-sm text-destructive p-4 border border-destructive/30 rounded">{error}</div>
+      ) : (
+        <>
+          <div>
+            <h2 className="text-2xl font-semibold">Reference Review</h2>
+            <p className="text-sm text-muted-foreground">Session: {sessionId}</p>
+          </div>
+
+          <GapDashboard references={references} />
+
+          <Tabs defaultValue="all">
+            <TabsList>
+              <TabsTrigger value="all">All ({references.length})</TabsTrigger>
+              <TabsTrigger value="confirm">
+                Needs Confirmation ({needsConfirm.length})
+              </TabsTrigger>
+              <TabsTrigger value="unmatched">
+                Unmatched ({unmatched.length})
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="all">
+              <ReferenceTable references={references} />
+            </TabsContent>
+            <TabsContent value="confirm">
+              <ReferenceTable references={needsConfirm} />
+            </TabsContent>
+            <TabsContent value="unmatched">
+              <ReferenceTable references={unmatched} />
+            </TabsContent>
+          </Tabs>
+
+          <Link href={`/verify/${sessionId}/report`}>
+            <Button>Continue to Report</Button>
+          </Link>
+        </>
+      )}
+    </div>
+  );
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="h-8 w-48 bg-muted rounded" />
+      <div className="h-4 w-32 bg-muted rounded" />
+      <div className="flex gap-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-8 w-24 bg-muted rounded" />
+        ))}
       </div>
-
-      <GapDashboard references={references} />
-
-      <Tabs defaultValue="all">
-        <TabsList>
-          <TabsTrigger value="all">All ({references.length})</TabsTrigger>
-          <TabsTrigger value="confirm">
-            Needs Confirmation ({needsConfirm.length})
-          </TabsTrigger>
-          <TabsTrigger value="unmatched">
-            Unmatched ({unmatched.length})
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="all">
-          <ReferenceTable references={references} />
-        </TabsContent>
-        <TabsContent value="confirm">
-          <ReferenceTable references={needsConfirm} />
-        </TabsContent>
-        <TabsContent value="unmatched">
-          <ReferenceTable references={unmatched} />
-        </TabsContent>
-      </Tabs>
-
-      <Link href={`/verify/${sessionId}/report`}>
-        <Button>Continue to Report</Button>
-      </Link>
+      <div className="space-y-2">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="h-12 bg-muted rounded" />
+        ))}
+      </div>
     </div>
   );
 }

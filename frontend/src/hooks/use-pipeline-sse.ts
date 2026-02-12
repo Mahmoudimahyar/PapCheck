@@ -18,9 +18,12 @@ export function usePipelineSSE(sessionId: string) {
   const [stages, setStages] = useState<StageStatus[]>(INITIAL_STAGES);
   const [isComplete, setIsComplete] = useState(false);
   const [interventionCount, setInterventionCount] = useState(0);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const closeRef = useRef<(() => void) | null>(null);
 
   const handleEvent = useCallback((event: PipelineEvent) => {
+    setIsReconnecting(false);
+
     if (event.status === "pipeline_complete") {
       setIsComplete(true);
       return;
@@ -58,11 +61,15 @@ export function usePipelineSSE(sessionId: string) {
     }
   }, []);
 
+  const handleError = useCallback(() => {
+    setIsReconnecting(true);
+  }, []);
+
   useEffect(() => {
     const url = getEventsUrl(sessionId);
-    closeRef.current = connectSSE(url, handleEvent);
+    closeRef.current = connectSSE(url, handleEvent, handleError);
     return () => closeRef.current?.();
-  }, [sessionId, handleEvent]);
+  }, [sessionId, handleEvent, handleError]);
 
-  return { stages, isComplete, interventionCount };
+  return { stages, isComplete, interventionCount, isReconnecting };
 }

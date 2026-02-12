@@ -29,6 +29,11 @@ class VerificationResult(BaseModel):
         "full_text", "abstract_only", "relevant_sections", "no_source"
     ] = "no_source"
     needs_user_review: bool = False
+    atomic_results: list["AtomicVerification"] | None = None
+    user_override: bool = False
+    user_override_reason: str = ""
+    original_verdict: Verdict | None = None
+    original_confidence: float | None = None
 
 
 class AtomicVerification(BaseModel):

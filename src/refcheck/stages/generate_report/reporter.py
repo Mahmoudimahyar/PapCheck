@@ -15,6 +15,7 @@ from refcheck.stages.generate_report.report_sections import (
     add_executive_summary,
     add_methodology_note,
     add_minor_issues,
+    add_retraction_section,
     add_verified_section,
 )
 
@@ -37,6 +38,7 @@ def generate_report(state: PipelineState, output_path: Path) -> Path:
 
     _add_title(doc, state, has_verifications)
     _add_summary(doc, state)
+    add_retraction_section(doc, state.references)
 
     # V1: Add verification sections if available
     if has_verifications:

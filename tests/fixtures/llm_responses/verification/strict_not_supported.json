@@ -1,0 +1,11 @@
+{
+  "claim_id": 1,
+  "reference_id": 1,
+  "verdict": "not_supported",
+  "confidence": 0.75,
+  "evidence_quotes": ["The study focused on younger patients aged 18-40"],
+  "reasoning": "[Strict] The source discusses younger patients, not elderly patients as claimed.",
+  "tier": 2,
+  "source_coverage": "relevant_sections",
+  "needs_user_review": false
+}

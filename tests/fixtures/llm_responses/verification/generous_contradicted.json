@@ -1,0 +1,11 @@
+{
+  "claim_id": 1,
+  "reference_id": 1,
+  "verdict": "contradicted",
+  "confidence": 0.82,
+  "evidence_quotes": ["Drug X showed no significant effect on mortality (p=0.45)"],
+  "reasoning": "[Generous] Even with charitable reading, the source clearly contradicts the claim.",
+  "tier": 2,
+  "source_coverage": "relevant_sections",
+  "needs_user_review": false
+}

@@ -1,4 +1,4 @@
-"""Tests for claim-citation extraction (V1)."""
+"""Tests for claim-citation extraction (V1 + V2 atomic decomposition)."""
 
 import json
 from pathlib import Path
@@ -9,6 +9,7 @@ import pytest
 from refcheck.models.claim import Claim
 from refcheck.models.reference import ManuscriptSection, ParsedManuscript, Reference
 from refcheck.stages.extract_claims.claim_parser import (
+    AtomicDecompositionResponse,
     ClaimExtractionResponse,
     apply_priority,
     assign_sequential_ids,
@@ -313,3 +314,148 @@ class TestExtractClaims:
 
         # Dedup should merge the identical claims
         assert len(claims) == 1
+
+
+# --- V2: Atomic decomposition tests ---
+
+
+class TestAtomicDecomposition:
+    @pytest.mark.asyncio
+    async def test_factual_high_priority_gets_decomposition(self) -> None:
+        """CE-06: High-priority factual claim gets atomic decomposition."""
+        extraction_fixture = _load_fixture("single_factual.json")
+        decomposition = AtomicDecompositionResponse(
+            atoms=[
+                "Drug X was studied for its effect on mortality",
+                "The mortality reduction was 30%",
+                "The study population was elderly patients",
+            ],
+        )
+        section = ManuscriptSection(
+            heading="Results",
+            text="Drug X reduced mortality by 30% in elderly patients [7].",
+        )
+        manuscript = _make_manuscript(sections=[section])
+
+        async def mock_call_llm(
+            template: str, **kwargs: object,
+        ) -> ClaimExtractionResponse | AtomicDecompositionResponse:
+            if template == "claim_extraction":
+                return extraction_fixture
+            if template == "atomic_decomposition":
+                return decomposition
+            raise ValueError(f"Unexpected template: {template}")
+
+        with patch(
+            "refcheck.stages.extract_claims.extractor.call_llm",
+            side_effect=mock_call_llm,
+        ):
+            claims = await extract_claims(manuscript)
+
+        assert len(claims) == 1
+        assert len(claims[0].atomic_claims) == 3
+        assert "mortality reduction was 30%" in claims[0].atomic_claims[1]
+
+    @pytest.mark.asyncio
+    async def test_background_claim_skips_decomposition(self) -> None:
+        """Background claims are not decomposed."""
+        extraction_fixture = _load_fixture("background.json")
+        section = ManuscriptSection(
+            heading="Introduction",
+            text="Cancer is a leading cause of death worldwide [4].",
+        )
+        manuscript = _make_manuscript(sections=[section])
+
+        call_count = 0
+
+        async def mock_call_llm(
+            template: str, **kwargs: object,
+        ) -> ClaimExtractionResponse:
+            nonlocal call_count
+            call_count += 1
+            if template == "claim_extraction":
+                return extraction_fixture
+            raise ValueError(f"Unexpected template: {template}")
+
+        with patch(
+            "refcheck.stages.extract_claims.extractor.call_llm",
+            side_effect=mock_call_llm,
+        ):
+            claims = await extract_claims(manuscript)
+
+        assert len(claims) == 1
+        assert claims[0].atomic_claims == []
+        # Only the extraction call, no decomposition call
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_low_priority_factual_skips_decomposition(self) -> None:
+        """Factual claims that end up low priority skip decomposition."""
+        # Create a factual claim that has low priority explicitly
+        response = ClaimExtractionResponse(
+            claims=[
+                Claim(
+                    id=0,
+                    extracted_claim="Drug Y exists",
+                    reference_ids=[1],
+                    claim_type="background",
+                    priority="low",
+                ),
+            ]
+        )
+        section = ManuscriptSection(
+            heading="Introduction",
+            text="Drug Y exists as a treatment option [1].",
+        )
+        manuscript = _make_manuscript(sections=[section])
+
+        call_count = 0
+
+        async def mock_call_llm(
+            template: str, **kwargs: object,
+        ) -> ClaimExtractionResponse:
+            nonlocal call_count
+            call_count += 1
+            if template == "claim_extraction":
+                return response
+            raise ValueError(f"Unexpected: {template}")
+
+        with patch(
+            "refcheck.stages.extract_claims.extractor.call_llm",
+            side_effect=mock_call_llm,
+        ):
+            claims = await extract_claims(manuscript)
+
+        assert len(claims) == 1
+        assert claims[0].atomic_claims == []
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_decomposition_failure_leaves_atoms_empty(self) -> None:
+        """Decomposition LLM failure leaves atoms empty (graceful)."""
+        from refcheck.llm.client import LLMResponseInvalidError
+
+        extraction_fixture = _load_fixture("single_factual.json")
+        section = ManuscriptSection(
+            heading="Results",
+            text="Drug X reduced mortality by 30% in elderly patients [7].",
+        )
+        manuscript = _make_manuscript(sections=[section])
+
+        async def mock_call_llm(
+            template: str, **kwargs: object,
+        ) -> ClaimExtractionResponse:
+            if template == "claim_extraction":
+                return extraction_fixture
+            if template == "atomic_decomposition":
+                raise LLMResponseInvalidError("bad json")
+            raise ValueError(f"Unexpected: {template}")
+
+        with patch(
+            "refcheck.stages.extract_claims.extractor.call_llm",
+            side_effect=mock_call_llm,
+        ):
+            claims = await extract_claims(manuscript)
+
+        assert len(claims) == 1
+        assert claims[0].atomic_claims == []

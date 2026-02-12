@@ -22,6 +22,7 @@ class Claim(BaseModel):
     reference_ids: list[int] = Field(default_factory=list)
     priority: Literal["high", "medium", "low"] = "medium"
     section_heading: str = ""
+    atomic_claims: list[str] = Field(default_factory=list)
 
 
 class AtomicClaim(BaseModel):

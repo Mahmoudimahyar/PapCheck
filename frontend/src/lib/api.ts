@@ -1,6 +1,13 @@
 /** API client — fetch wrapper for RefCheck backend. */
 
-import type { ReferencesResponse, ResultsResponse, Session } from "./types";
+import type {
+  Claim,
+  ReferencesResponse,
+  ReportPreview,
+  ResultsResponse,
+  Session,
+  VerificationResult,
+} from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
@@ -103,4 +110,79 @@ export function getReportUrl(sessionId: string): string {
 
 export function getEventsUrl(sessionId: string): string {
   return `${API_BASE}/api/sessions/${sessionId}/events`;
+}
+
+export async function overrideVerdict(
+  sessionId: string,
+  claimId: number,
+  verdict: string,
+  reason: string
+): Promise<VerificationResult> {
+  const res = await fetch(
+    `${API_BASE}/api/sessions/${sessionId}/results/${claimId}/override`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ verdict, reason }),
+    }
+  );
+  if (!res.ok) throw new APIError(res.status, await res.text());
+  return res.json();
+}
+
+export async function regenerateReport(
+  sessionId: string
+): Promise<{ message: string; generated_at: string }> {
+  const res = await fetch(
+    `${API_BASE}/api/sessions/${sessionId}/report/regenerate`,
+    { method: "POST" }
+  );
+  if (!res.ok) throw new APIError(res.status, await res.text());
+  return res.json();
+}
+
+export async function getReportPreview(
+  sessionId: string
+): Promise<ReportPreview> {
+  const res = await fetch(
+    `${API_BASE}/api/sessions/${sessionId}/report/preview`
+  );
+  if (!res.ok) throw new APIError(res.status, await res.text());
+  return res.json();
+}
+
+export async function getClaims(sessionId: string): Promise<Claim[]> {
+  const res = await fetch(
+    `${API_BASE}/api/sessions/${sessionId}/claims`
+  );
+  if (!res.ok) throw new APIError(res.status, await res.text());
+  return res.json();
+}
+
+export async function updateClaim(
+  sessionId: string,
+  claimId: number,
+  updates: Partial<Claim>
+): Promise<Claim> {
+  const res = await fetch(
+    `${API_BASE}/api/sessions/${sessionId}/claims/${claimId}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    }
+  );
+  if (!res.ok) throw new APIError(res.status, await res.text());
+  return res.json();
+}
+
+export async function deleteClaim(
+  sessionId: string,
+  claimId: number
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/api/sessions/${sessionId}/claims/${claimId}`,
+    { method: "DELETE" }
+  );
+  if (!res.ok) throw new APIError(res.status, await res.text());
 }

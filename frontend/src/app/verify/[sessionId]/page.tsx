@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PipelineTracker } from "@/components/refcheck/pipeline-tracker";
+import { BreadcrumbNav } from "@/components/refcheck/breadcrumb-nav";
 import { usePipelineSSE } from "@/hooks/use-pipeline-sse";
 
 export default function PipelinePage({
@@ -13,14 +14,26 @@ export default function PipelinePage({
   params: Promise<{ sessionId: string }>;
 }) {
   const { sessionId } = use(params);
-  const { stages, isComplete, interventionCount } = usePipelineSSE(sessionId);
+  const { stages, isComplete, interventionCount, isReconnecting } = usePipelineSSE(sessionId);
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
+      <BreadcrumbNav sessionId={sessionId} current="progress" />
       <div>
         <h2 className="text-2xl font-semibold">Verification in Progress</h2>
         <p className="text-sm text-muted-foreground">Session: {sessionId}</p>
       </div>
+
+      {isReconnecting && (
+        <Card className="border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950">
+          <CardContent className="py-2 flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            <span className="text-sm text-amber-700 dark:text-amber-300">
+              Reconnecting to pipeline events...
+            </span>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="pt-6">

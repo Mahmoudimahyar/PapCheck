@@ -112,10 +112,20 @@ class TestVerifyClaims:
         claim = _make_claim()
         ref = _make_ref(pdf_path=pdf_path)
 
-        with patch(
-            "refcheck.stages.verify_claims.verifier.call_llm",
-            new_callable=AsyncMock,
-            return_value=fixture,
+        # Tier 2 will be triggered (partially_supported is ambiguous)
+        tier2_result = fixture.model_copy(update={"tier": 2})
+
+        with (
+            patch(
+                "refcheck.stages.verify_claims.verifier.call_llm",
+                new_callable=AsyncMock,
+                return_value=fixture,
+            ),
+            patch(
+                "refcheck.stages.verify_claims.verifier.verify_tier2",
+                new_callable=AsyncMock,
+                return_value=tier2_result,
+            ),
         ):
             results = await verify_claims([claim], [ref])
 
@@ -209,15 +219,28 @@ class TestVerifyClaims:
         claim = _make_claim()
         ref = _make_ref(pdf_path=pdf_path)
 
-        with patch(
-            "refcheck.stages.verify_claims.verifier.call_llm",
-            new_callable=AsyncMock,
-            return_value=fixture,
+        # After quote validation penalty, Tier 2 will trigger
+        flagged = fixture.model_copy(update={
+            "needs_user_review": True,
+            "confidence": fixture.confidence - 0.2,
+            "tier": 2,
+        })
+
+        with (
+            patch(
+                "refcheck.stages.verify_claims.verifier.call_llm",
+                new_callable=AsyncMock,
+                return_value=fixture,
+            ),
+            patch(
+                "refcheck.stages.verify_claims.verifier.verify_tier2",
+                new_callable=AsyncMock,
+                return_value=flagged,
+            ),
         ):
             results = await verify_claims([claim], [ref])
 
         assert results[0].needs_user_review is True
-        # Confidence should be penalized
         assert results[0].confidence < fixture.confidence
 
     @pytest.mark.asyncio
@@ -268,3 +291,98 @@ class TestVerifyClaims:
         assert len(results) == 2
         ref_ids = {r.reference_id for r in results}
         assert ref_ids == {1, 2}
+
+
+class TestTier2Escalation:
+    """V2: Tests for Tier 1 → Tier 2 escalation logic."""
+
+    @pytest.mark.asyncio
+    async def test_low_confidence_triggers_tier2(self, tmp_path: Path) -> None:
+        """Low-confidence Tier 1 (0.65) triggers Tier 2."""
+        tier1_fixture = _load_fixture("supported.json").model_copy(
+            update={"confidence": 0.65}
+        )
+        source_text = "Drug X was associated with a 30% reduction"
+        pdf_path = _create_source_pdf(tmp_path, source_text)
+
+        claim = _make_claim()
+        ref = _make_ref(pdf_path=pdf_path)
+
+        tier2_result = VerificationResult(
+            claim_id=1, reference_id=1, verdict="supported",
+            confidence=0.85, tier=2,
+        )
+
+        with (
+            patch(
+                "refcheck.stages.verify_claims.verifier.call_llm",
+                new_callable=AsyncMock,
+                return_value=tier1_fixture,
+            ),
+            patch(
+                "refcheck.stages.verify_claims.verifier.verify_tier2",
+                new_callable=AsyncMock,
+                return_value=tier2_result,
+            ) as mock_t2,
+        ):
+            results = await verify_claims([claim], [ref])
+
+        assert results[0].tier == 2
+        mock_t2.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_high_confidence_skips_tier2(self, tmp_path: Path) -> None:
+        """High-confidence Tier 1 (0.90) skips Tier 2."""
+        fixture = _load_fixture("supported.json").model_copy(
+            update={"confidence": 0.90}
+        )
+        source_text = "Drug X was associated with a 30% reduction"
+        pdf_path = _create_source_pdf(tmp_path, source_text)
+
+        claim = _make_claim()
+        ref = _make_ref(pdf_path=pdf_path)
+
+        with (
+            patch(
+                "refcheck.stages.verify_claims.verifier.call_llm",
+                new_callable=AsyncMock,
+                return_value=fixture,
+            ),
+            patch(
+                "refcheck.stages.verify_claims.verifier.verify_tier2",
+                new_callable=AsyncMock,
+            ) as mock_t2,
+        ):
+            results = await verify_claims([claim], [ref])
+
+        assert results[0].tier == 1
+        mock_t2.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_background_skips_tier2(self, tmp_path: Path) -> None:
+        """Background claim skips Tier 2 regardless of confidence."""
+        fixture = _load_fixture("background.json").model_copy(
+            update={"confidence": 0.55, "verdict": "partially_supported"}
+        )
+        source_text = "Cancer is a major health burden"
+        pdf_path = _create_source_pdf(tmp_path, source_text)
+
+        claim = _make_claim(claim_type="background", text="Cancer is common")
+        ref = _make_ref(pdf_path=pdf_path)
+
+        with (
+            patch(
+                "refcheck.stages.verify_claims.verifier.call_llm",
+                new_callable=AsyncMock,
+                return_value=fixture,
+            ),
+            patch(
+                "refcheck.stages.verify_claims.verifier.verify_tier2",
+                new_callable=AsyncMock,
+            ) as mock_t2,
+        ):
+            results = await verify_claims([claim], [ref])
+
+        # Background claim type behavior upgrades to supported
+        assert results[0].verdict == "supported"
+        mock_t2.assert_not_called()

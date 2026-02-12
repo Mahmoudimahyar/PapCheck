@@ -189,6 +189,37 @@ class TestReporter:
         assert "Existence Report" in full_text
         assert "Executive Summary" not in full_text
 
+    def test_report_includes_retraction_section(self, tmp_path: Path) -> None:
+        """Report includes retraction section when retracted papers found."""
+        refs = [
+            Reference(
+                id=1, title="Retracted Paper", source_status="found",
+                retraction_status="retracted",
+                retraction_detail="Fabricated data",
+            ),
+            Reference(id=2, title="Clean Paper", source_status="found"),
+        ]
+        state = _make_state(refs)
+        output = tmp_path / "report.docx"
+        generate_report(state, output)
+        doc = docx.Document(str(output))
+        full_text = "\n".join(p.text for p in doc.paragraphs)
+        assert "RETRACTED" in full_text
+
+    def test_report_omits_retraction_section_when_clean(
+        self, tmp_path: Path,
+    ) -> None:
+        """Report omits retraction section when all papers are clean."""
+        refs = [
+            Reference(id=1, title="Clean Paper", source_status="found"),
+        ]
+        state = _make_state(refs)
+        output = tmp_path / "report.docx"
+        generate_report(state, output)
+        doc = docx.Document(str(output))
+        full_text = "\n".join(p.text for p in doc.paragraphs)
+        assert "RETRACTED OR CORRECTED" not in full_text
+
     def test_v1_methodology_note(self, tmp_path: Path) -> None:
         """V1 report includes methodology note with model name."""
         refs = [Reference(id=1, title="Paper 1", source_status="found")]

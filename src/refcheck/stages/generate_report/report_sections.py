@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from docx.shared import Pt, RGBColor
 
 from refcheck.models.claim import Claim
+from refcheck.models.reference import Reference
 from refcheck.models.verification import VerificationResult
 
 if TYPE_CHECKING:
@@ -174,3 +175,27 @@ def _add_finding_detail(
         f"Coverage: {result.source_coverage}"
     )
     doc.add_paragraph("")  # Spacer
+
+
+def add_retraction_section(
+    doc: "DocxDocument",
+    references: list[Reference],
+) -> None:
+    """Add retraction warning section if any references are retracted/corrected."""
+    flagged = [
+        r for r in references
+        if r.retraction_status not in ("ok", "unknown")
+    ]
+    if not flagged:
+        return
+    doc.add_heading("RETRACTED OR CORRECTED REFERENCES", level=2)
+    para = doc.add_paragraph()
+    run = para.add_run(f"WARNING: {len(flagged)} reference(s) have been flagged:")
+    run.bold = True
+    run.font.color.rgb = _RED
+    for ref in flagged:
+        status = ref.retraction_status.upper().replace("_", " ")
+        doc.add_paragraph(
+            f"[{ref.id}] {ref.title}: {status} — {ref.retraction_detail}",
+            style="List Bullet",
+        )

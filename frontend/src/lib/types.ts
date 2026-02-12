@@ -13,6 +13,10 @@ export interface Reference {
   pdf_path: string | null;
   pdf_source: "user_upload" | "open_access" | "not_available" | null;
   journal_url: string | null;
+  retraction_status: "ok" | "retracted" | "corrected" | "expression_of_concern" | "unknown";
+  retraction_detail: string;
+  duplicate_of: number | null;
+  is_supplementary: boolean;
 }
 
 export interface Session {
@@ -90,6 +94,15 @@ export interface VerificationResult {
   source_coverage: string;
   needs_user_review: boolean;
   claim: ClaimDetail;
+  user_override: boolean;
+  user_override_reason: string;
+  atomic_results?: AtomicVerification[];
+}
+
+export interface AtomicVerification {
+  atom: string;
+  verified: boolean | null;
+  evidence: string | null;
 }
 
 export interface ResultsSummary {
@@ -107,4 +120,14 @@ export interface ResultsResponse {
   total: number;
   page: number;
   per_page: number;
+}
+
+// V2 Report types
+export interface ReportPreview {
+  summary: Record<string, number>;
+  critical_findings: Array<Record<string, string>>;
+  minor_issues: Array<Record<string, string>>;
+  retracted: Array<Record<string, string>>;
+  overrides_count: number;
+  generated_at: string;
 }

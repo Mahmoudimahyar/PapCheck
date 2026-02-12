@@ -51,6 +51,22 @@ Rate your confidence based on the strength of textual evidence:
 - **0.5-0.69**: Evidence is suggestive but not definitive
 - **Below 0.5**: Insufficient evidence — verdict should be "cannot_verify"
 
+{% if atoms %}
+## Atomic Claims
+
+This claim has been decomposed into independently verifiable atoms. Verify EACH atom individually:
+
+{% for atom in atoms.split('|||') %}
+- {{ atom }}
+{% endfor %}
+
+For each atom, provide:
+- Whether it is verified (true), refuted (false), or cannot be determined (null)
+- The specific evidence quote supporting your determination
+
+Include per-atom results in your response as "atomic_results".
+{% endif %}
+
 ## Claim-Type Specific Guidance
 
 {% if claim_type == "factual" %}

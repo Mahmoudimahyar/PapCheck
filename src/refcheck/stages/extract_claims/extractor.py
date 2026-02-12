@@ -6,6 +6,7 @@ from refcheck.llm.client import LLMResponseInvalidError, call_llm
 from refcheck.models.claim import Claim
 from refcheck.models.reference import ParsedManuscript
 from refcheck.stages.extract_claims.claim_parser import (
+    AtomicDecompositionResponse,
     ClaimExtractionResponse,
     apply_priority,
     assign_sequential_ids,
@@ -14,6 +15,8 @@ from refcheck.stages.extract_claims.claim_parser import (
 )
 
 logger = logging.getLogger(__name__)
+
+_DECOMPOSE_TYPES = frozenset({"factual", "contrast"})
 
 
 def _section_has_citations(text: str) -> bool:
@@ -46,7 +49,8 @@ async def extract_claims(
     """Extract claim-citation pairs from a parsed manuscript.
 
     Processes section by section, calling the LLM for each section
-    that contains citations. Returns deduplicated, validated claims.
+    that contains citations. Deduplicates, assigns IDs, and runs
+    V2 atomic decomposition on high-priority factual/contrast claims.
     """
     valid_ref_ids = {ref.id for ref in manuscript.references}
     reference_list = _build_reference_list(manuscript)
@@ -68,26 +72,61 @@ async def extract_claims(
             warnings.append(f"LLM failed for section: {heading}")
             continue
 
-        # Apply priority mapping and set section heading
         processed = []
         for claim in section_claims:
             updated = apply_priority(claim)
             updated = updated.model_copy(update={"section_heading": heading})
             processed.append(updated)
 
-        # Filter claims with invalid reference IDs
         processed = filter_invalid_refs(processed, valid_ref_ids)
         all_claims.extend(processed)
 
-    # Deduplicate and assign sequential IDs
     all_claims = deduplicate_claims(all_claims)
     all_claims = assign_sequential_ids(all_claims)
+
+    # V2: Atomic decomposition for high-priority factual/contrast claims
+    all_claims = await _decompose_claims(all_claims)
 
     if warnings:
         logger.warning("Claim extraction warnings: %s", warnings)
 
     logger.info("Extracted %d claims from manuscript", len(all_claims))
     return all_claims
+
+
+async def _decompose_claims(claims: list[Claim]) -> list[Claim]:
+    """Run atomic decomposition on eligible claims."""
+    result: list[Claim] = []
+    for claim in claims:
+        if _should_decompose(claim):
+            atoms = await _decompose_single(claim)
+            claim = claim.model_copy(update={"atomic_claims": atoms})
+        result.append(claim)
+    return result
+
+
+def _should_decompose(claim: Claim) -> bool:
+    """Only high-priority factual/contrast claims get decomposed."""
+    return claim.claim_type in _DECOMPOSE_TYPES and claim.priority == "high"
+
+
+async def _decompose_single(claim: Claim) -> list[str]:
+    """Decompose a single claim into atoms. Returns [] on failure."""
+    try:
+        response = await call_llm(
+            template="atomic_decomposition",
+            variables={
+                "claim": claim.extracted_claim,
+                "claim_type": claim.claim_type,
+            },
+            output_model=AtomicDecompositionResponse,
+        )
+        return response.atoms
+    except (LLMResponseInvalidError, Exception):
+        logger.warning(
+            "Atomic decomposition failed for claim %d", claim.id,
+        )
+        return []
 
 
 async def _extract_section_claims(

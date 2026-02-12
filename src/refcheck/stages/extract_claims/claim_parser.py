@@ -26,6 +26,12 @@ class ClaimExtractionResponse(BaseModel):
     claims: list[Claim] = Field(default_factory=list)
 
 
+class AtomicDecompositionResponse(BaseModel):
+    """LLM response shape for atomic claim decomposition (V2)."""
+
+    atoms: list[str] = Field(default_factory=list)
+
+
 def apply_priority(claim: Claim) -> Claim:
     """Enforce priority mapping based on claim type."""
     correct_priority = _PRIORITY_MAP.get(claim.claim_type, "medium")
