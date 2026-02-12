@@ -1,0 +1,13 @@
+{
+  "claims": [
+    {
+      "id": 0,
+      "manuscript_text": "Unlike Jones et al. [5] who reported no significant effect, our study found clear benefit.",
+      "extracted_claim": "Jones et al. reported no significant effect (contrasted with current positive findings)",
+      "claim_type": "contrast",
+      "reference_ids": [5],
+      "priority": "high",
+      "section_heading": "Discussion"
+    }
+  ]
+}

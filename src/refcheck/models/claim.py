@@ -1,4 +1,4 @@
-"""Claim and atomic claim data models (stub for V1)."""
+"""Claim and atomic claim data models for V1 claim extraction."""
 
 from typing import Literal
 
@@ -6,10 +6,9 @@ from pydantic import BaseModel, Field
 
 
 class Claim(BaseModel):
-    """A claim-citation pair extracted from the manuscript (V1 feature)."""
+    """A claim-citation pair extracted from the manuscript."""
 
     id: int
-    reference_id: int
     manuscript_text: str = ""
     extracted_claim: str = ""
     claim_type: Literal[
@@ -19,10 +18,10 @@ class Claim(BaseModel):
         "attribution",
         "contrast",
         "interpretive",
-        "unknown",
-    ] = "unknown"
+    ] = "factual"
+    reference_ids: list[int] = Field(default_factory=list)
     priority: Literal["high", "medium", "low"] = "medium"
-    section: str | None = None
+    section_heading: str = ""
 
 
 class AtomicClaim(BaseModel):

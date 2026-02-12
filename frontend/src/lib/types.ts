@@ -57,3 +57,54 @@ export interface ReferencesResponse {
   page: number;
   per_page: number;
 }
+
+// V1: Claim types
+export interface Claim {
+  id: number;
+  manuscript_text: string;
+  extracted_claim: string;
+  claim_type: "factual" | "methodological" | "background" | "attribution" | "contrast" | "interpretive";
+  reference_ids: number[];
+  priority: "high" | "medium" | "low";
+  section_heading: string;
+}
+
+// V1: Verification types
+export type Verdict = "supported" | "partially_supported" | "not_supported" | "contradicted" | "cannot_verify";
+
+export interface ClaimDetail {
+  manuscript_text: string;
+  extracted_claim: string;
+  claim_type: string;
+  priority: string;
+}
+
+export interface VerificationResult {
+  claim_id: number;
+  reference_id: number;
+  verdict: Verdict;
+  confidence: number;
+  evidence_quotes: string[];
+  reasoning: string;
+  tier: number;
+  source_coverage: string;
+  needs_user_review: boolean;
+  claim: ClaimDetail;
+}
+
+export interface ResultsSummary {
+  total: number;
+  supported: number;
+  partially_supported: number;
+  not_supported: number;
+  contradicted: number;
+  cannot_verify: number;
+}
+
+export interface ResultsResponse {
+  summary: ResultsSummary;
+  results: VerificationResult[];
+  total: number;
+  page: number;
+  per_page: number;
+}

@@ -1,4 +1,4 @@
-"""Verification result data models (stub for V1)."""
+"""Verification result data models for V1 claim verification."""
 
 from typing import Literal
 
@@ -14,7 +14,7 @@ Verdict = Literal[
 
 
 class VerificationResult(BaseModel):
-    """Result of verifying one claim against its cited source (V1)."""
+    """Result of verifying one claim against its cited source."""
 
     claim_id: int
     reference_id: int
@@ -24,9 +24,9 @@ class VerificationResult(BaseModel):
     )
     evidence_quotes: list[str] = Field(default_factory=list)
     reasoning: str = ""
-    tier: int = Field(default=1, description="Verification tier (1=single LLM)")
+    tier: Literal[1, 2, 3] = 1
     source_coverage: Literal[
-        "full_text", "abstract_only", "no_source"
+        "full_text", "abstract_only", "relevant_sections", "no_source"
     ] = "no_source"
     needs_user_review: bool = False
 
@@ -34,8 +34,6 @@ class VerificationResult(BaseModel):
 class AtomicVerification(BaseModel):
     """Verification of a single atomic claim (V2)."""
 
-    atomic_claim_id: int
-    verdict: Verdict = "cannot_verify"
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    evidence_quote: str = ""
-    reasoning: str = ""
+    atom: str = ""
+    verified: bool | None = None
+    evidence: str | None = None

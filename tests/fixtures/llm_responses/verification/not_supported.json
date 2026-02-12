@@ -1,0 +1,11 @@
+{
+  "claim_id": 1,
+  "reference_id": 1,
+  "verdict": "not_supported",
+  "confidence": 0.85,
+  "evidence_quotes": [],
+  "reasoning": "The source paper discusses an entirely different drug (Drug Y) and does not mention Drug X or mortality outcomes.",
+  "tier": 1,
+  "source_coverage": "relevant_sections",
+  "needs_user_review": false
+}

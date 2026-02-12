@@ -48,6 +48,9 @@ export default function PipelinePage({
           <Link href={`/verify/${sessionId}/review`}>
             <Button variant="outline">Review References</Button>
           </Link>
+          <Link href={`/verify/${sessionId}/results`}>
+            <Button variant="outline">Verification Results</Button>
+          </Link>
           <Link href={`/verify/${sessionId}/report`}>
             <Button>View Report</Button>
           </Link>

@@ -1,0 +1,11 @@
+{
+  "claim_id": 1,
+  "reference_id": 1,
+  "verdict": "supported",
+  "confidence": 0.75,
+  "evidence_quotes": ["Our findings demonstrate significant mortality reduction"],
+  "reasoning": "Abstract supports the general claim but limited detail available for full verification.",
+  "tier": 1,
+  "source_coverage": "abstract_only",
+  "needs_user_review": false
+}

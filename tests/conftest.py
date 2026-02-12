@@ -1,5 +1,7 @@
 """Shared test fixtures for RefCheck tests."""
 
+import asyncio
+import sys
 from pathlib import Path
 
 import docx
@@ -9,6 +11,12 @@ from dotenv import load_dotenv
 
 # Load .env file so API keys are available in tests
 load_dotenv(Path(__file__).parent.parent / ".env")
+
+# Fix "Event loop is closed" error on Windows with httpx/litellm async calls.
+# ProactorEventLoop (Windows default) has issues with cleanup of async HTTP
+# connections; SelectorEventLoop works correctly.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 MANUSCRIPTS_DIR = FIXTURES_DIR / "manuscripts"

@@ -142,26 +142,55 @@ class TestMatchResult:
         assert restored.match_method == "title_fuzzy"
 
 
-# --- Claim models ---
+# --- Claim models (V1) ---
 
 
 class TestClaim:
     def test_minimal_claim(self) -> None:
-        c = Claim(id=1, reference_id=1)
-        assert c.claim_type == "unknown"
+        c = Claim(id=1)
+        assert c.claim_type == "factual"
         assert c.priority == "medium"
+        assert c.reference_ids == []
+        assert c.section_heading == ""
 
     def test_full_claim(self) -> None:
         c = Claim(
             id=1,
-            reference_id=5,
             manuscript_text="Drug X reduces mortality [5]",
             extracted_claim="Drug X reduces mortality",
             claim_type="factual",
+            reference_ids=[5],
             priority="high",
-            section="Results",
+            section_heading="Results",
         )
         assert c.claim_type == "factual"
+        assert c.reference_ids == [5]
+        assert c.section_heading == "Results"
+
+    def test_claim_type_validation(self) -> None:
+        """Reject invalid claim types."""
+        with pytest.raises(ValidationError):
+            Claim(id=1, claim_type="invalid_type")  # type: ignore[arg-type]
+
+    def test_claim_priority_validation(self) -> None:
+        """Reject invalid priority values."""
+        with pytest.raises(ValidationError):
+            Claim(id=1, priority="urgent")  # type: ignore[arg-type]
+
+    def test_claim_multiple_references(self) -> None:
+        """Claim can reference multiple sources."""
+        c = Claim(id=1, reference_ids=[1, 2, 3])
+        assert len(c.reference_ids) == 3
+
+    def test_all_claim_types(self) -> None:
+        """All six claim types are valid."""
+        valid_types = [
+            "factual", "methodological", "background",
+            "attribution", "contrast", "interpretive",
+        ]
+        for ct in valid_types:
+            c = Claim(id=1, claim_type=ct)  # type: ignore[arg-type]
+            assert c.claim_type == ct
 
 
 class TestAtomicClaim:
@@ -171,7 +200,7 @@ class TestAtomicClaim:
         assert ac.tags == []
 
 
-# --- Verification models ---
+# --- Verification models (V1) ---
 
 
 class TestVerificationResult:
@@ -193,11 +222,60 @@ class TestVerificationResult:
         )
         assert vr.verdict == "contradicted"
 
+    def test_verdict_literal_validation(self) -> None:
+        """Reject invalid verdict values."""
+        with pytest.raises(ValidationError):
+            VerificationResult(
+                claim_id=1, reference_id=1, verdict="invalid_verdict"  # type: ignore[arg-type]
+            )
+
+    def test_confidence_bounds_upper(self) -> None:
+        """Reject confidence > 1.0."""
+        with pytest.raises(ValidationError):
+            VerificationResult(claim_id=1, reference_id=1, confidence=1.5)
+
+    def test_confidence_bounds_lower(self) -> None:
+        """Reject confidence < 0.0."""
+        with pytest.raises(ValidationError):
+            VerificationResult(claim_id=1, reference_id=1, confidence=-0.1)
+
+    def test_source_coverage_values(self) -> None:
+        """All source_coverage options are valid."""
+        for cov in ["full_text", "abstract_only", "relevant_sections", "no_source"]:
+            vr = VerificationResult(
+                claim_id=1, reference_id=1, source_coverage=cov  # type: ignore[arg-type]
+            )
+            assert vr.source_coverage == cov
+
+    def test_tier_values(self) -> None:
+        """Tier must be 1, 2, or 3."""
+        for t in [1, 2, 3]:
+            vr = VerificationResult(claim_id=1, reference_id=1, tier=t)  # type: ignore[arg-type]
+            assert vr.tier == t
+
+    def test_needs_user_review_default(self) -> None:
+        """needs_user_review defaults to False."""
+        vr = VerificationResult(claim_id=1, reference_id=1)
+        assert vr.needs_user_review is False
+
+    def test_all_verdicts(self) -> None:
+        """All five verdict values are valid."""
+        valid = [
+            "supported", "partially_supported", "not_supported",
+            "contradicted", "cannot_verify",
+        ]
+        for v in valid:
+            vr = VerificationResult(
+                claim_id=1, reference_id=1, verdict=v  # type: ignore[arg-type]
+            )
+            assert vr.verdict == v
+
 
 class TestAtomicVerification:
     def test_atomic_verification(self) -> None:
-        av = AtomicVerification(atomic_claim_id=1)
-        assert av.verdict == "cannot_verify"
+        av = AtomicVerification()
+        assert av.atom == ""
+        assert av.verified is None
 
 
 # --- Pipeline models ---
@@ -240,17 +318,25 @@ class TestPipelineState:
         ps = PipelineState(session_id="sess_123")
         assert ps.status == "created"
         assert ps.references == []
+        assert ps.claims == []
+        assert ps.verification_results == []
         assert ps.manuscript is None
 
     def test_state_with_data(self) -> None:
         ref = Reference(id=1, title="Test")
+        claim = Claim(id=1, reference_ids=[1], extracted_claim="Test claim")
+        vr = VerificationResult(claim_id=1, reference_id=1, verdict="supported")
         ps = PipelineState(
             session_id="sess_123",
             references=[ref],
-            current_stage=1,
+            claims=[claim],
+            verification_results=[vr],
+            current_stage=5,
             status="running",
         )
         assert len(ps.references) == 1
+        assert len(ps.claims) == 1
+        assert len(ps.verification_results) == 1
 
 
 class TestSession:

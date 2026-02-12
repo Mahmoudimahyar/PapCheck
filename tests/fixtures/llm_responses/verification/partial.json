@@ -1,0 +1,11 @@
+{
+  "claim_id": 1,
+  "reference_id": 1,
+  "verdict": "partially_supported",
+  "confidence": 0.72,
+  "evidence_quotes": ["Drug X showed a 25% reduction in mortality"],
+  "reasoning": "The manuscript claims 30% but the source reports 25%. The direction is correct but the magnitude is overstated.",
+  "tier": 1,
+  "source_coverage": "relevant_sections",
+  "needs_user_review": false
+}

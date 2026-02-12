@@ -1,0 +1,11 @@
+{
+  "claim_id": 1,
+  "reference_id": 1,
+  "verdict": "supported",
+  "confidence": 0.65,
+  "evidence_quotes": ["Osteoarthritis remains a major health burden"],
+  "reasoning": "Background claim is topically supported by the source text discussing osteoarthritis burden.",
+  "tier": 1,
+  "source_coverage": "relevant_sections",
+  "needs_user_review": false
+}

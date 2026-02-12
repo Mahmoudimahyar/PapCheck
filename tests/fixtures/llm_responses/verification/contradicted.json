@@ -1,0 +1,11 @@
+{
+  "claim_id": 1,
+  "reference_id": 1,
+  "verdict": "contradicted",
+  "confidence": 0.88,
+  "evidence_quotes": ["non-significant 12% reduction (p=0.08)"],
+  "reasoning": "The manuscript claims 30% reduction but the source reports only 12% and the result was non-significant.",
+  "tier": 1,
+  "source_coverage": "relevant_sections",
+  "needs_user_review": false
+}

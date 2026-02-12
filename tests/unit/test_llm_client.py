@@ -1,7 +1,7 @@
 """Unit tests for LLM client (mocked — no real API calls)."""
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import BaseModel
@@ -34,16 +34,15 @@ class TestCallLLM:
     @pytest.mark.asyncio
     async def test_successful_call(self) -> None:
         """call_llm validates output against Pydantic model."""
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = json.dumps({
+        good_json = json.dumps({
             "summary": "Test summary",
             "confidence": 0.85,
         })
 
-        with patch("refcheck.llm.client.litellm") as mock_litellm:
-            mock_litellm.acompletion = AsyncMock(return_value=mock_response)
-
+        with patch(
+            "refcheck.llm.client._sync_completion",
+            return_value=good_json,
+        ):
             from refcheck.llm.client import call_llm
 
             result = await call_llm(
@@ -57,22 +56,17 @@ class TestCallLLM:
     @pytest.mark.asyncio
     async def test_retry_on_invalid_json(self) -> None:
         """call_llm retries on malformed JSON."""
-        bad_response = MagicMock()
-        bad_response.choices = [MagicMock()]
-        bad_response.choices[0].message.content = "not json"
-
-        good_response = MagicMock()
-        good_response.choices = [MagicMock()]
-        good_response.choices[0].message.content = json.dumps({
+        good_json = json.dumps({
             "summary": "Retried",
             "confidence": 0.5,
         })
 
-        with patch("refcheck.llm.client.litellm") as mock_litellm:
-            mock_litellm.acompletion = AsyncMock(
-                side_effect=[bad_response, good_response]
-            )
+        mock_sync = MagicMock(side_effect=["not json", good_json])
 
+        with patch(
+            "refcheck.llm.client._sync_completion",
+            mock_sync,
+        ):
             from refcheck.llm.client import call_llm
 
             result = await call_llm(
@@ -86,13 +80,10 @@ class TestCallLLM:
     @pytest.mark.asyncio
     async def test_fails_after_retries_exhausted(self) -> None:
         """call_llm raises after all retries fail."""
-        bad_response = MagicMock()
-        bad_response.choices = [MagicMock()]
-        bad_response.choices[0].message.content = "not json"
-
-        with patch("refcheck.llm.client.litellm") as mock_litellm:
-            mock_litellm.acompletion = AsyncMock(return_value=bad_response)
-
+        with patch(
+            "refcheck.llm.client._sync_completion",
+            return_value="not json",
+        ):
             from refcheck.llm.client import LLMResponseInvalidError, call_llm
 
             with pytest.raises(LLMResponseInvalidError):

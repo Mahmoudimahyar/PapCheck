@@ -76,6 +76,7 @@ markers = [
     "integration: marks integration tests",
     "e2e: marks end-to-end tests",
     "canary: marks LLM grounding canary tests",
+    "live: marks tests requiring live API keys",
 ]
 
 [tool.setuptools.packages.find]

@@ -7,8 +7,10 @@ import type { PipelineEvent, StageStatus } from "@/lib/types";
 
 const INITIAL_STAGES: StageStatus[] = [
   { stage: 1, name: "Parse Manuscript", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
+  { stage: 2, name: "Extract Claims", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
   { stage: 3, name: "Match PDFs", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
   { stage: 4, name: "Resolve Gaps", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
+  { stage: 5, name: "Verify Claims", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
   { stage: 6, name: "Generate Report", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
 ];
 
@@ -19,15 +21,12 @@ export function usePipelineSSE(sessionId: string) {
   const closeRef = useRef<(() => void) | null>(null);
 
   const handleEvent = useCallback((event: PipelineEvent) => {
-    // Handle pipeline-level completion
     if (event.status === "pipeline_complete") {
       setIsComplete(true);
       return;
     }
 
-    // Handle pipeline-level error (stage=0 means not stage-specific)
     if (event.status === "error" && (!event.stage || event.stage === 0)) {
-      // Global error — mark all pending stages as error
       setStages((prev) =>
         prev.map((s) =>
           s.status === "pending" || s.status === "running"
@@ -38,12 +37,10 @@ export function usePipelineSSE(sessionId: string) {
       return;
     }
 
-    // Handle intervention requests
     if (event.status === "needs_input" && event.intervention) {
       setInterventionCount((prev) => prev + 1);
     }
 
-    // Update the specific stage that this event targets
     if (event.stage && event.stage > 0) {
       setStages((prev) =>
         prev.map((s) => {

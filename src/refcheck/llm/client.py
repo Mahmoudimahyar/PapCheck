@@ -1,5 +1,10 @@
-"""Unified LLM call wrapper using litellm."""
+"""Unified LLM call wrapper using litellm.
 
+Uses synchronous litellm.completion() in a thread pool to avoid
+Windows event-loop issues with litellm's async httpx client.
+"""
+
+import asyncio
 import json
 import logging
 from typing import TypeVar
@@ -13,7 +18,24 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
-_DEFAULT_MODEL = "claude-sonnet-4-5-20250514"
+_DEFAULT_MODEL = "anthropic/claude-sonnet-4-5-20250929"
+
+
+def _sync_completion(
+    model: str,
+    messages: list[dict[str, str]],
+) -> str:
+    """Run litellm.completion synchronously (called from thread pool)."""
+    response = litellm.completion(
+        model=model,
+        messages=messages,
+        response_format={"type": "json_object"},
+        temperature=0.1,
+    )
+    content = response.choices[0].message.content
+    if not content:
+        raise ValueError("Empty LLM response")
+    return content
 
 
 async def call_llm(
@@ -30,21 +52,16 @@ async def call_llm(
     Retries once on parse/validation failure.
     """
     prompt_text = render_template(template, variables)
-    messages = [{"role": "user", "content": prompt_text}]
+    messages: list[dict[str, str]] = [
+        {"role": "user", "content": prompt_text},
+    ]
 
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
-            response = await litellm.acompletion(
-                model=model,
-                messages=messages,
-                response_format={"type": "json_object"},
-                temperature=0.1,
+            content = await asyncio.to_thread(
+                _sync_completion, model, messages,
             )
-            content = response.choices[0].message.content
-            if not content:
-                raise ValueError("Empty LLM response")
-
             parsed = json.loads(content)
             result = output_model.model_validate(parsed)
             logger.info(
@@ -62,7 +79,6 @@ async def call_llm(
                 exc,
             )
             if attempt < max_retries:
-                # Append error context for retry
                 messages.append({
                     "role": "user",
                     "content": (
