@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from refcheck.models.evidence import ClaimLocation
+
 
 class Claim(BaseModel):
     """A claim-citation pair extracted from the manuscript."""
@@ -23,6 +25,7 @@ class Claim(BaseModel):
     priority: Literal["high", "medium", "low"] = "medium"
     section_heading: str = ""
     atomic_claims: list[str] = Field(default_factory=list)
+    location: ClaimLocation | None = None
 
 
 class AtomicClaim(BaseModel):

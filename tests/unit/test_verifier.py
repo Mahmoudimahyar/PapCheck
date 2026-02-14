@@ -386,3 +386,34 @@ class TestTier2Escalation:
         # Background claim type behavior upgrades to supported
         assert results[0].verdict == "supported"
         mock_t2.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_background_error_still_escalates(self, tmp_path: Path) -> None:
+        """Background claim that errors should still escalate to Tier 2."""
+        source_text = "Cancer is a major health burden"
+        pdf_path = _create_source_pdf(tmp_path, source_text)
+
+        claim = _make_claim(claim_type="background", text="Cancer is common")
+        ref = _make_ref(pdf_path=pdf_path)
+
+        tier2_fixture = _load_fixture("background.json").model_copy(
+            update={"confidence": 0.9, "verdict": "supported", "tier": 2}
+        )
+
+        with (
+            patch(
+                "refcheck.stages.verify_claims.verifier.call_llm",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("rate limit"),
+            ),
+            patch(
+                "refcheck.stages.verify_claims.verifier.verify_tier2",
+                new_callable=AsyncMock,
+                return_value=tier2_fixture,
+            ) as mock_t2,
+        ):
+            results = await verify_claims([claim], [ref])
+
+        # Error should trigger Tier 2 even for background
+        mock_t2.assert_called_once()
+        assert results[0].verdict == "supported"

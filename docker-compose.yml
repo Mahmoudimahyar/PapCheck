@@ -8,6 +8,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   backend:
     build:
@@ -21,11 +22,22 @@ services:
       - SEMANTIC_SCHOLAR_API_KEY=${SEMANTIC_SCHOLAR_API_KEY:-}
       - NCBI_API_KEY=${NCBI_API_KEY:-}
       - UNPAYWALL_EMAIL=${UNPAYWALL_EMAIL:-}
+      - REFCHECK_DB_PATH=/data/refcheck.db
+      - REFCHECK_CACHE_DIR=/data/cache
+      - REFCHECK_LOG_LEVEL=INFO
+      - REFCHECK_LLM_CONCURRENCY=5
+      - REFCHECK_API_CONCURRENCY=10
     depends_on:
       grobid:
         condition: service_healthy
     volumes:
-      - refcheck-data:/root/.refcheck
+      - refcheck-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
   frontend:
     build:
@@ -34,9 +46,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8001
+      - NEXT_PUBLIC_API_URL=http://localhost:8001
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   refcheck-data:

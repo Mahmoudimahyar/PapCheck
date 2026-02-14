@@ -1,24 +1,31 @@
-"""Report download, regeneration, and preview endpoints."""
+"""Report download, regeneration, preview, and diff endpoints."""
 
 import asyncio
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from sqlmodel import Session as DBSession
 
-from refcheck.models.claim import Claim
+from refcheck.api.routes.report_helpers import (
+    build_counts,
+    collect_critical,
+    collect_minor,
+    collect_retracted,
+)
+from refcheck.db.converters import db_to_claim, db_to_reference, db_to_verification
+from refcheck.db.deps import get_db
+from refcheck.db.session_repo import get_session as db_get_session
+from refcheck.db.session_repo import update_session as db_update_session
 from refcheck.models.pipeline import PipelineState
-from refcheck.models.reference import ParsedManuscript, Reference
-from refcheck.models.verification import VerificationResult
+from refcheck.models.reference import ParsedManuscript
 from refcheck.stages.generate_report import generate_report as generate_report_fn
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-_REPORT_PATHS: dict[str, Path] = {}
 
 
 class ReportPreview(BaseModel):
@@ -32,10 +39,21 @@ class ReportPreview(BaseModel):
     generated_at: str = ""
 
 
+class ReportDiff(BaseModel):
+    """Diff between original and overridden verification results."""
+
+    changes: list[dict[str, str]] = Field(default_factory=list)
+    total_overrides: int = 0
+
+
 @router.get("/api/sessions/{session_id}/report")
-async def download_report(session_id: str) -> FileResponse:
+async def download_report(
+    session_id: str,
+    db: DBSession = Depends(get_db),
+) -> FileResponse:
     """Download the generated DOCX report."""
-    report_path = _REPORT_PATHS.get(session_id)
+    sess = db_get_session(db, session_id)
+    report_path = Path(sess.report_path) if sess and sess.report_path else None
     if not report_path or not report_path.exists():
         raise HTTPException(404, "Report not yet generated")
 
@@ -50,150 +68,101 @@ async def download_report(session_id: str) -> FileResponse:
 
 
 @router.post("/api/sessions/{session_id}/report/regenerate")
-async def regenerate_report(session_id: str) -> dict[str, str]:
+async def regenerate_report(
+    session_id: str,
+    db: DBSession = Depends(get_db),
+) -> dict[str, str]:
     """Regenerate the report after user overrides."""
-    from refcheck.api.routes.references import get_reference_store
-    from refcheck.api.routes.results import (
-        get_claims_store,
-        get_verification_store,
-    )
-    from refcheck.api.routes.sessions import get_session_store
+    from refcheck.db.claim_repo import get_claims as db_get_claims
+    from refcheck.db.reference_repo import get_all_references
+    from refcheck.db.verification_repo import get_all_verifications
 
-    refs = get_reference_store().get(session_id, [])
-    claims = get_claims_store().get(session_id, [])
-    verifications = get_verification_store().get(session_id, [])
-    sessions = get_session_store()
-
-    session = sessions.get(session_id)
-    if not session:
+    sess = db_get_session(db, session_id)
+    if not sess:
         raise HTTPException(404, "Session not found")
 
-    manuscript = ParsedManuscript(filename=session.manuscript_filename)
+    refs = [db_to_reference(r) for r in get_all_references(db, session_id)]
+    claims = [db_to_claim(c) for c in db_get_claims(db, session_id)]
+    verifications = [
+        db_to_verification(v) for v in get_all_verifications(db, session_id)
+    ]
+
+    manuscript = ParsedManuscript(filename=sess.manuscript_filename)
     state = PipelineState(
-        session_id=session_id,
-        manuscript=manuscript,
-        references=refs,
-        claims=claims,
+        session_id=session_id, manuscript=manuscript,
+        references=refs, claims=claims,
         verification_results=verifications,
     )
 
-    # Determine output path
-    old_path = _REPORT_PATHS.get(session_id)
-    output_path = old_path or (
-        Path.home()
-        / ".refcheck"
-        / "sessions"
-        / session_id
+    output_path = (
+        Path.home() / ".refcheck" / "sessions" / session_id
         / f"refcheck_report_{session_id}.docx"
     )
-
     await asyncio.to_thread(generate_report_fn, state, output_path)
-    _REPORT_PATHS[session_id] = output_path
+    db_update_session(db, session_id, report_path=str(output_path))
 
     now = datetime.now(UTC).isoformat()
     return {"message": "Report regenerated", "generated_at": now}
 
 
 @router.get("/api/sessions/{session_id}/report/preview")
-async def get_report_preview(session_id: str) -> ReportPreview:
+async def get_report_preview(
+    session_id: str,
+    db: DBSession = Depends(get_db),
+) -> ReportPreview:
     """Get a JSON preview of the report."""
-    from refcheck.api.routes.references import get_reference_store
-    from refcheck.api.routes.results import (
-        get_claims_store,
-        get_verification_store,
-    )
+    from refcheck.db.claim_repo import get_claims as db_get_claims
+    from refcheck.db.reference_repo import get_all_references
+    from refcheck.db.verification_repo import get_all_verifications
 
-    verifications = get_verification_store().get(session_id, [])
-    refs = get_reference_store().get(session_id, [])
+    db_vs = get_all_verifications(db, session_id)
+    db_refs = get_all_references(db, session_id)
+    db_cls = db_get_claims(db, session_id)
 
-    # Build summary counts
-    counts: dict[str, int] = {
-        "total": len(verifications),
-        "supported": 0,
-        "partially_supported": 0,
-        "not_supported": 0,
-        "contradicted": 0,
-        "cannot_verify": 0,
-    }
-    for v in verifications:
-        if v.verdict in counts:
-            counts[v.verdict] += 1
-
-    # Critical findings (not_supported / contradicted)
-    claims = get_claims_store().get(session_id, [])
+    verifications = [db_to_verification(v) for v in db_vs]
+    refs = [db_to_reference(r) for r in db_refs]
+    claims = [db_to_claim(c) for c in db_cls]
     claims_by_id = {c.id: c for c in claims}
-    critical = _collect_critical(verifications, claims_by_id)
 
-    # Minor issues (partially_supported)
-    minor = _collect_minor(verifications, claims_by_id)
-
-    # Retracted references
-    retracted = _collect_retracted(refs)
-
+    counts = build_counts(verifications)
+    critical = collect_critical(verifications, claims_by_id)
+    minor = collect_minor(verifications, claims_by_id)
+    retracted = collect_retracted(refs)
     overrides = sum(1 for v in verifications if v.user_override)
-    now = datetime.now(UTC).isoformat()
 
     return ReportPreview(
-        summary=counts,
-        critical_findings=critical,
-        minor_issues=minor,
-        retracted=retracted,
+        summary=counts, critical_findings=critical,
+        minor_issues=minor, retracted=retracted,
         overrides_count=overrides,
-        generated_at=now,
+        generated_at=datetime.now(UTC).isoformat(),
     )
 
 
-def _collect_critical(
-    verifications: list[VerificationResult],
-    claims_by_id: dict[int, Claim],
-) -> list[dict[str, str]]:
-    """Collect critical findings from verifications."""
-    critical: list[dict[str, str]] = []
+@router.get("/api/sessions/{session_id}/report/diff")
+async def get_report_diff(
+    session_id: str,
+    db: DBSession = Depends(get_db),
+) -> ReportDiff:
+    """Get changes between original and overridden verdicts."""
+    from refcheck.db.claim_repo import get_claims as db_get_claims
+    from refcheck.db.verification_repo import get_all_verifications
+
+    db_vs = get_all_verifications(db, session_id)
+    db_cls = db_get_claims(db, session_id)
+
+    verifications = [db_to_verification(v) for v in db_vs]
+    claims = {c.claim_number: db_to_claim(c) for c in db_cls}
+
+    changes: list[dict[str, str]] = []
     for v in verifications:
-        if v.verdict in ("not_supported", "contradicted"):
-            claim = claims_by_id.get(v.claim_id)
-            critical.append({
+        if v.user_override:
+            claim = claims.get(v.claim_id)
+            changes.append({
                 "claim_id": str(v.claim_id),
-                "verdict": v.verdict,
                 "claim": claim.extracted_claim if claim else "",
-                "reasoning": v.reasoning,
+                "original_verdict": v.verdict,
+                "new_verdict": v.verdict,
+                "reason": v.user_override_reason,
             })
-    return critical
 
-
-def _collect_minor(
-    verifications: list[VerificationResult],
-    claims_by_id: dict[int, Claim],
-) -> list[dict[str, str]]:
-    """Collect minor issues from verifications."""
-    minor: list[dict[str, str]] = []
-    for v in verifications:
-        if v.verdict == "partially_supported":
-            claim = claims_by_id.get(v.claim_id)
-            minor.append({
-                "claim_id": str(v.claim_id),
-                "verdict": v.verdict,
-                "claim": claim.extracted_claim if claim else "",
-            })
-    return minor
-
-
-def _collect_retracted(
-    refs: list[Reference],
-) -> list[dict[str, str]]:
-    """Collect retracted references."""
-    retracted: list[dict[str, str]] = []
-    for r in refs:
-        if r.retraction_status not in ("ok", "unknown"):
-            retracted.append({
-                "ref_id": str(r.id),
-                "title": r.title,
-                "status": r.retraction_status,
-                "detail": r.retraction_detail,
-            })
-    return retracted
-
-
-def get_report_store() -> dict[str, Path]:
-    """Access report store (for pipeline runner and testing)."""
-    return _REPORT_PATHS
+    return ReportDiff(changes=changes, total_overrides=len(changes))

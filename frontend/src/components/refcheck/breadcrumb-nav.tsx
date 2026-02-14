@@ -4,7 +4,7 @@ import Link from "next/link";
 
 interface BreadcrumbNavProps {
   sessionId: string;
-  current: "progress" | "review" | "claims" | "results" | "report";
+  current: "progress" | "review" | "claims" | "results" | "viewer" | "report";
 }
 
 const STEPS = [
@@ -12,6 +12,7 @@ const STEPS = [
   { key: "review", label: "Review", path: "/review" },
   { key: "claims", label: "Claims", path: "/claims" },
   { key: "results", label: "Results", path: "/results" },
+  { key: "viewer", label: "Viewer", path: "/viewer" },
   { key: "report", label: "Report", path: "/report" },
 ] as const;
 

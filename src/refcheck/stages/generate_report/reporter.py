@@ -119,8 +119,7 @@ def _add_reference_table(
     for ref in references:
         row = table.add_row()
         row.cells[0].text = str(ref.id)
-        title_text = ref.title[:60] + ("..." if len(ref.title) > 60 else "")
-        row.cells[1].text = title_text
+        row.cells[1].text = ref.title or ""
         row.cells[2].text = ", ".join(ref.authors[:2])
         row.cells[3].text = ref.source_status
         row.cells[4].text = _pdf_status_text(ref)
@@ -160,8 +159,9 @@ def _add_not_found_section(
     )
 
     for ref in not_found:
+        display = ref.title or ref.raw_text
         doc.add_paragraph(
-            f"[{ref.id}] {ref.title or ref.raw_text[:80]}",
+            f"[{ref.id}] {display}",
             style="List Bullet",
         )
         if ref.doi:

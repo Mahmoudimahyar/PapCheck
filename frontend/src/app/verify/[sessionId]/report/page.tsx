@@ -18,11 +18,18 @@ export default function ReportPage({
       <BreadcrumbNav sessionId={sessionId} current="report" />
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold">Report</h2>
-        <Link href={`/verify/${sessionId}/results`}>
-          <Button variant="outline" size="sm">
-            Back to Results
-          </Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href={`/verify/${sessionId}/viewer`}>
+            <Button variant="outline" size="sm">
+              Manuscript View
+            </Button>
+          </Link>
+          <Link href={`/verify/${sessionId}/results`}>
+            <Button variant="outline" size="sm">
+              Back to Results
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <ReportPreview sessionId={sessionId} />

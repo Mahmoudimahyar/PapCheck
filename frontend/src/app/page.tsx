@@ -4,7 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { UploadZone } from "@/components/refcheck/upload-zone";
+import { SessionHistory } from "@/components/refcheck/session-history";
 import { createSession, startPipeline } from "@/lib/api";
 
 export default function HomePage() {
@@ -29,7 +31,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="space-y-8 max-w-2xl mx-auto">
+    <div className="space-y-10 max-w-2xl mx-auto">
       <div className="text-center space-y-2">
         <h2 className="text-2xl font-semibold">Verify Your References</h2>
         <p className="text-muted-foreground">
@@ -94,6 +96,10 @@ export default function HomePage() {
       >
         {loading ? "Starting..." : "Start Verification"}
       </Button>
+
+      <Separator />
+
+      <SessionHistory />
     </div>
   );
 }

@@ -1,10 +1,12 @@
 """Orchestrate reference resolution across academic APIs."""
 
+import asyncio
 import logging
 from pathlib import Path
 
 import httpx
 
+from refcheck.llm.concurrency import get_api_semaphore
 from refcheck.models.reference import Reference
 from refcheck.stages.resolve_gaps.crossref_client import (
     search_by_doi as crossref_by_doi,
@@ -35,22 +37,27 @@ async def resolve_gaps(
 ) -> list[Reference]:
     """Resolve unmatched references via academic APIs.
 
-    For each reference without a PDF, queries PubMed, CrossRef,
-    Semantic Scholar and attempts open-access download.
+    V3: Processes references concurrently with a semaphore to respect
+    rate limits while maximizing throughput.
     """
     if output_dir is None:
         output_dir = Path.home() / ".refcheck" / "cache" / "pdfs"
 
-    updated: list[Reference] = []
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-        for ref in references:
-            if ref.pdf_path is not None:
-                updated.append(ref)
-                continue
-            resolved = await _resolve_single(ref, output_dir, client)
-            updated.append(resolved)
+    sem = get_api_semaphore()
 
-    return updated
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+
+        async def _guarded_resolve(ref: Reference) -> Reference:
+            if ref.pdf_path is not None:
+                return ref
+            async with sem:
+                return await _resolve_single(ref, output_dir, client)
+
+        results = await asyncio.gather(
+            *[_guarded_resolve(ref) for ref in references],
+        )
+
+    return list(results)
 
 
 async def _resolve_single(

@@ -2,12 +2,21 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Install system dependencies for PyMuPDF and curl for healthcheck
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
 COPY pyproject.toml .
 COPY src/ src/
 
 RUN pip install --no-cache-dir -e "." && \
     pip install --no-cache-dir uvicorn[standard]
 
+# Create data directory
+RUN mkdir -p /data/cache /data/sessions
+
 EXPOSE 8001
 
-CMD ["uvicorn", "refcheck.api.main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uvicorn", "refcheck.api.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1"]

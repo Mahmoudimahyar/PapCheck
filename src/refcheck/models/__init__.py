@@ -1,6 +1,7 @@
 """Pydantic data models for the RefCheck pipeline."""
 
 from refcheck.models.claim import AtomicClaim, Claim
+from refcheck.models.evidence import ClaimLocation, EvidenceSection, QuoteHighlight
 from refcheck.models.matching import MatchResult
 from refcheck.models.pipeline import (
     Intervention,
@@ -24,6 +25,8 @@ __all__ = [
     "AtomicClaim",
     "AtomicVerification",
     "Claim",
+    "ClaimLocation",
+    "EvidenceSection",
     "InTextCitation",
     "Intervention",
     "ManuscriptSection",
@@ -31,6 +34,7 @@ __all__ = [
     "ParsedManuscript",
     "PipelineEvent",
     "PipelineState",
+    "QuoteHighlight",
     "Reference",
     "Session",
     "StageStatus",

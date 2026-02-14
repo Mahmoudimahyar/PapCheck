@@ -57,12 +57,15 @@ export default function PipelinePage({
       )}
 
       {isComplete && (
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <Link href={`/verify/${sessionId}/review`}>
             <Button variant="outline">Review References</Button>
           </Link>
           <Link href={`/verify/${sessionId}/results`}>
             <Button variant="outline">Verification Results</Button>
+          </Link>
+          <Link href={`/verify/${sessionId}/viewer`}>
+            <Button variant="outline">View Manuscript</Button>
           </Link>
           <Link href={`/verify/${sessionId}/report`}>
             <Button>View Report</Button>

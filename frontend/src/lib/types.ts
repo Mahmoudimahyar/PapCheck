@@ -122,6 +122,93 @@ export interface ResultsResponse {
   per_page: number;
 }
 
+// V3: Session list
+export interface SessionListResponse {
+  sessions: Session[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+// V2: Evidence Mapping & Manuscript Viewer types
+
+export interface ClaimLocation {
+  paragraph_index: number;
+  char_start: number;
+  char_end: number;
+  citation_markers: string[];
+  section_heading: string;
+  in_figure_or_table: boolean;
+}
+
+export interface QuoteHighlight {
+  quote: string;
+  char_start: number;
+  char_end: number;
+  match_type: "direct" | "paraphrased" | "numeric_mismatch" | "absent";
+  manuscript_element: string;
+}
+
+export interface EvidenceSection {
+  section_heading: string;
+  full_text: string;
+  page_number: number | null;
+  quote_highlights: QuoteHighlight[];
+}
+
+export interface ParagraphClaim {
+  claim_id: number;
+  char_start: number;
+  char_end: number;
+  citation_markers: string[];
+  verdict: string;
+  confidence: number;
+  reference_ids: number[];
+}
+
+export interface ManuscriptParagraph {
+  index: number;
+  text: string;
+  section_heading: string;
+  claims: ParagraphClaim[];
+}
+
+export interface ManuscriptResponse {
+  title: string;
+  paragraphs: ManuscriptParagraph[];
+  legend: Record<string, number>;
+  total_claims: number;
+  total_paragraphs: number;
+  unmapped_claims: number[];
+}
+
+export interface VerificationEvidence {
+  reference_id: number;
+  reference_title: string;
+  reference_authors: string[];
+  verdict: string;
+  confidence: number;
+  tier: number;
+  reasoning: string;
+  evidence_sections: EvidenceSection[];
+  atomic_results: { atom: string; verified: boolean | null; evidence: string | null }[] | null;
+  user_override: boolean;
+  user_override_reason: string;
+}
+
+export interface EvidenceResponse {
+  claim: {
+    id: number;
+    manuscript_text: string;
+    extracted_claim: string;
+    claim_type: string;
+    priority: string;
+    atomic_claims: string[];
+    location: ClaimLocation | null;
+  };
+  verifications: VerificationEvidence[];
+}
+
 // V2 Report types
 export interface ReportPreview {
   summary: Record<string, number>;

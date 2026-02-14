@@ -6,8 +6,11 @@ import os
 from refcheck.llm.client import LLMResponseInvalidError, call_llm
 from refcheck.models.claim import Claim
 from refcheck.models.reference import Reference
-from refcheck.models.verification import VerificationResult
-from refcheck.stages.verify_claims.quote_validator import validate_quotes
+from refcheck.models.verification import Verdict, VerificationResult
+from refcheck.stages.verify_claims.verifier_helpers import (
+    dedupe_quotes,
+    validate_tier_quotes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +103,7 @@ def _models_agree(
     avg = (tier2.confidence + secondary.confidence) / 2
     boosted = min(avg + _CONFIDENCE_BOOST, _MAX_CONFIDENCE)
     reasoning = f"{tier2.reasoning}\n[Secondary model] {secondary.reasoning}"
-    quotes = _dedupe(tier2.evidence_quotes, secondary.evidence_quotes)
+    quotes = dedupe_quotes(tier2.evidence_quotes, secondary.evidence_quotes)
 
     result = VerificationResult(
         claim_id=claim.id,
@@ -113,7 +116,7 @@ def _models_agree(
         source_coverage=tier2.source_coverage,
         needs_user_review=False,
     )
-    return _validate_quotes(result, source_text)
+    return validate_tier_quotes(result, source_text, penalty=0.1)
 
 
 def _models_disagree(
@@ -123,50 +126,38 @@ def _models_disagree(
     reference: Reference,
     source_text: str,
 ) -> VerificationResult:
-    """Models disagree — flag for human review with both reasonings."""
+    """Models disagree — resolve verdict intelligently.
+
+    If the primary returned cannot_verify (error/failure), prefer the
+    secondary model's real verdict. Otherwise flag for human review.
+    """
+    # If primary failed (cannot_verify from error), trust secondary
+    chosen_verdict: Verdict
+    if tier2.verdict == "cannot_verify":
+        chosen_verdict = secondary.verdict
+        needs_review = False
+    else:
+        chosen_verdict = tier2.verdict
+        needs_review = True
+
     avg = (tier2.confidence + secondary.confidence) / 2
     reasoning = (
         f"[Primary → {tier2.verdict}] {tier2.reasoning}\n"
         f"[Secondary → {secondary.verdict}] {secondary.reasoning}"
     )
-    quotes = _dedupe(tier2.evidence_quotes, secondary.evidence_quotes)
+    quotes = dedupe_quotes(tier2.evidence_quotes, secondary.evidence_quotes)
 
     result = VerificationResult(
         claim_id=claim.id,
         reference_id=reference.id,
-        verdict=tier2.verdict,
+        verdict=chosen_verdict,
         confidence=round(avg, 3),
         evidence_quotes=quotes,
         reasoning=reasoning,
         tier=3,
-        source_coverage=tier2.source_coverage,
-        needs_user_review=True,
+        source_coverage=secondary.source_coverage or tier2.source_coverage,
+        needs_user_review=needs_review,
     )
-    return _validate_quotes(result, source_text)
+    return validate_tier_quotes(result, source_text, penalty=0.1)
 
 
-def _validate_quotes(
-    result: VerificationResult, source_text: str,
-) -> VerificationResult:
-    """Run post-hoc quote validation."""
-    if not result.evidence_quotes or not source_text:
-        return result
-    validations = validate_quotes(result.evidence_quotes, source_text)
-    invalid = sum(1 for v in validations if not v.found_in_source)
-    if invalid > 0:
-        return result.model_copy(update={
-            "confidence": round(max(0.0, result.confidence - 0.1), 3),
-        })
-    return result
-
-
-def _dedupe(a: list[str], b: list[str]) -> list[str]:
-    """Merge two quote lists, removing duplicates."""
-    seen: set[str] = set()
-    result: list[str] = []
-    for q in a + b:
-        key = q.strip().lower()
-        if key not in seen:
-            seen.add(key)
-            result.append(q)
-    return result

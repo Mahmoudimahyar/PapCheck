@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from refcheck.models.claim import AtomicClaim, Claim
+from refcheck.models.evidence import ClaimLocation, EvidenceSection, QuoteHighlight
 from refcheck.models.matching import MatchResult
 from refcheck.models.pipeline import (
     Intervention,
@@ -350,3 +351,163 @@ class TestSession:
         data = s.model_dump_json()
         restored = Session.model_validate_json(data)
         assert restored.id == "sess_abc"
+
+
+# --- Evidence models (V2: Manuscript Viewer) ---
+
+
+class TestClaimLocation:
+    def test_valid_location(self) -> None:
+        loc = ClaimLocation(paragraph_index=2, char_start=10, char_end=50)
+        assert loc.paragraph_index == 2
+        assert loc.char_start == 10
+        assert loc.char_end == 50
+        assert loc.citation_markers == []
+        assert loc.section_heading == ""
+        assert loc.in_figure_or_table is False
+
+    def test_paragraph_index_nonnegative(self) -> None:
+        with pytest.raises(ValidationError):
+            ClaimLocation(paragraph_index=-1, char_start=0, char_end=10)
+
+    def test_char_start_nonnegative(self) -> None:
+        with pytest.raises(ValidationError):
+            ClaimLocation(paragraph_index=0, char_start=-5, char_end=10)
+
+    def test_full_location(self) -> None:
+        loc = ClaimLocation(
+            paragraph_index=3,
+            char_start=5,
+            char_end=40,
+            citation_markers=["[7]", "[8]"],
+            section_heading="Results",
+            in_figure_or_table=True,
+        )
+        assert loc.citation_markers == ["[7]", "[8]"]
+        assert loc.section_heading == "Results"
+        assert loc.in_figure_or_table is True
+
+    def test_json_roundtrip(self) -> None:
+        loc = ClaimLocation(
+            paragraph_index=1, char_start=0, char_end=20,
+            citation_markers=["[3]"],
+        )
+        data = loc.model_dump_json()
+        restored = ClaimLocation.model_validate_json(data)
+        assert restored.paragraph_index == 1
+        assert restored.citation_markers == ["[3]"]
+
+
+class TestQuoteHighlight:
+    def test_valid_highlight(self) -> None:
+        qh = QuoteHighlight(
+            quote="28% reduction", char_start=42, char_end=55,
+        )
+        assert qh.match_type == "direct"
+        assert qh.manuscript_element == ""
+
+    def test_match_type_literal(self) -> None:
+        for mt in ["direct", "paraphrased", "numeric_mismatch", "absent"]:
+            qh = QuoteHighlight(quote="t", match_type=mt)  # type: ignore[arg-type]
+            assert qh.match_type == mt
+
+    def test_invalid_match_type(self) -> None:
+        with pytest.raises(ValidationError):
+            QuoteHighlight(quote="t", match_type="wrong")  # type: ignore[arg-type]
+
+
+class TestEvidenceSection:
+    def test_minimal_section(self) -> None:
+        es = EvidenceSection()
+        assert es.section_heading == ""
+        assert es.full_text == ""
+        assert es.page_number is None
+        assert es.quote_highlights == []
+
+    def test_full_section(self) -> None:
+        es = EvidenceSection(
+            section_heading="Results",
+            full_text="Drug X resulted in a 28% reduction...",
+            page_number=4,
+            quote_highlights=[
+                QuoteHighlight(quote="28% reduction", char_start=22, char_end=35),
+            ],
+        )
+        assert len(es.quote_highlights) == 1
+        assert es.quote_highlights[0].quote == "28% reduction"
+
+    def test_json_roundtrip(self) -> None:
+        es = EvidenceSection(
+            section_heading="Discussion",
+            full_text="Significant findings.",
+            quote_highlights=[
+                QuoteHighlight(
+                    quote="Significant", char_start=0, char_end=11,
+                    match_type="direct", manuscript_element="significance",
+                ),
+            ],
+        )
+        data = es.model_dump_json()
+        restored = EvidenceSection.model_validate_json(data)
+        assert restored.section_heading == "Discussion"
+        assert len(restored.quote_highlights) == 1
+        assert restored.quote_highlights[0].match_type == "direct"
+
+
+class TestClaimWithLocation:
+    def test_claim_location_none_default(self) -> None:
+        c = Claim(id=1)
+        assert c.location is None
+
+    def test_claim_with_location(self) -> None:
+        loc = ClaimLocation(paragraph_index=2, char_start=5, char_end=50)
+        c = Claim(id=1, location=loc)
+        assert c.location is not None
+        assert c.location.paragraph_index == 2
+
+    def test_claim_location_json_roundtrip(self) -> None:
+        loc = ClaimLocation(
+            paragraph_index=3, char_start=10, char_end=60,
+            citation_markers=["[7]"], section_heading="Results",
+        )
+        c = Claim(id=1, manuscript_text="test [7]", location=loc)
+        data = c.model_dump_json()
+        restored = Claim.model_validate_json(data)
+        assert restored.location is not None
+        assert restored.location.citation_markers == ["[7]"]
+
+
+class TestVerificationResultWithEvidence:
+    def test_evidence_sections_default(self) -> None:
+        vr = VerificationResult(claim_id=1, reference_id=1)
+        assert vr.evidence_sections == []
+
+    def test_with_evidence_sections(self) -> None:
+        es = EvidenceSection(
+            section_heading="Results",
+            full_text="28% reduction in mortality.",
+            quote_highlights=[
+                QuoteHighlight(
+                    quote="28% reduction", char_start=0, char_end=13,
+                    match_type="numeric_mismatch",
+                ),
+            ],
+        )
+        vr = VerificationResult(
+            claim_id=1, reference_id=1, verdict="partially_supported",
+            evidence_sections=[es],
+        )
+        assert len(vr.evidence_sections) == 1
+        assert vr.evidence_sections[0].quote_highlights[0].match_type == "numeric_mismatch"
+
+    def test_evidence_sections_json_roundtrip(self) -> None:
+        vr = VerificationResult(
+            claim_id=1, reference_id=1,
+            evidence_sections=[
+                EvidenceSection(section_heading="Methods", full_text="..."),
+                EvidenceSection(section_heading="Results", full_text="..."),
+            ],
+        )
+        data = vr.model_dump_json()
+        restored = VerificationResult.model_validate_json(data)
+        assert len(restored.evidence_sections) == 2

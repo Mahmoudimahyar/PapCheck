@@ -2,10 +2,13 @@
 
 import type {
   Claim,
+  EvidenceResponse,
+  ManuscriptResponse,
   ReferencesResponse,
   ReportPreview,
   ResultsResponse,
   Session,
+  SessionListResponse,
   VerificationResult,
 } from "./types";
 
@@ -39,6 +42,26 @@ export async function getSession(id: string): Promise<Session> {
   const res = await fetch(`${API_BASE}/api/sessions/${id}`);
   if (!res.ok) throw new APIError(res.status, await res.text());
   return res.json();
+}
+
+export async function listSessions(
+  page = 1,
+  perPage = 20
+): Promise<SessionListResponse> {
+  const params = new URLSearchParams({
+    page: String(page),
+    per_page: String(perPage),
+  });
+  const res = await fetch(`${API_BASE}/api/sessions?${params}`);
+  if (!res.ok) throw new APIError(res.status, await res.text());
+  return res.json();
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new APIError(res.status, await res.text());
 }
 
 export async function startPipeline(sessionId: string): Promise<void> {
@@ -185,4 +208,25 @@ export async function deleteClaim(
     { method: "DELETE" }
   );
   if (!res.ok) throw new APIError(res.status, await res.text());
+}
+
+export async function getManuscript(
+  sessionId: string
+): Promise<ManuscriptResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/sessions/${sessionId}/manuscript`
+  );
+  if (!res.ok) throw new APIError(res.status, await res.text());
+  return res.json();
+}
+
+export async function getEvidence(
+  sessionId: string,
+  claimId: number
+): Promise<EvidenceResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/sessions/${sessionId}/evidence/${claimId}`
+  );
+  if (!res.ok) throw new APIError(res.status, await res.text());
+  return res.json();
 }

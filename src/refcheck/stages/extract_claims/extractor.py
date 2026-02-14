@@ -13,17 +13,15 @@ from refcheck.stages.extract_claims.claim_parser import (
     deduplicate_claims,
     filter_invalid_refs,
 )
+from refcheck.stages.extract_claims.position_mapper import map_claims_to_positions
+from refcheck.stages.extract_claims.section_filter import (
+    is_body_section,
+    section_has_citations,
+)
 
 logger = logging.getLogger(__name__)
 
 _DECOMPOSE_TYPES = frozenset({"factual", "contrast"})
-
-
-def _section_has_citations(text: str) -> bool:
-    """Check if section text contains citation markers like [1] or [1-3]."""
-    import re
-
-    return bool(re.search(r"\[\d+", text))
 
 
 def _build_reference_list(manuscript: ParsedManuscript) -> str:
@@ -48,19 +46,40 @@ async def extract_claims(
 ) -> list[Claim]:
     """Extract claim-citation pairs from a parsed manuscript.
 
-    Processes section by section, calling the LLM for each section
-    that contains citations. Deduplicates, assigns IDs, and runs
-    V2 atomic decomposition on high-priority factual/contrast claims.
+    Processes body sections, calling the LLM for each section that
+    contains citations. If no sections have detected citations, falls
+    back to sending all body sections (citation format may not be
+    detected). Deduplicates, assigns IDs, and runs V2 atomic
+    decomposition on high-priority factual/contrast claims.
     """
     valid_ref_ids = {ref.id for ref in manuscript.references}
     reference_list = _build_reference_list(manuscript)
+
+    # Filter to body sections only (skip references, acknowledgments, etc.)
+    body_sections = [
+        s for s in manuscript.sections
+        if s.text and is_body_section(s)
+    ]
+
+    # Try citation-based filtering first
+    sections_with_cites = [
+        s for s in body_sections if section_has_citations(s.text)
+    ]
+
+    # Fallback: if no sections have detected citations but body text exists,
+    # send all body sections — the citation format may not be bracket-based
+    if not sections_with_cites and body_sections:
+        logger.info(
+            "No bracket/paren citations detected; sending all %d body "
+            "sections to LLM for claim extraction",
+            len(body_sections),
+        )
+        sections_with_cites = body_sections
+
     all_claims: list[Claim] = []
     warnings: list[str] = []
 
-    for section in manuscript.sections:
-        if not section.text or not _section_has_citations(section.text):
-            continue
-
+    for section in sections_with_cites:
         heading = section.heading or "Untitled Section"
         section_claims = await _extract_section_claims(
             section_text=section.text,
@@ -86,6 +105,9 @@ async def extract_claims(
 
     # V2: Atomic decomposition for high-priority factual/contrast claims
     all_claims = await _decompose_claims(all_claims)
+
+    # V2: Map claims to manuscript positions for the viewer
+    all_claims = map_claims_to_positions(all_claims, manuscript)
 
     if warnings:
         logger.warning("Claim extraction warnings: %s", warnings)

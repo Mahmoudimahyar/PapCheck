@@ -46,7 +46,7 @@ class Reference(BaseModel):
     ] = "pending"
     pdf_path: Path | None = None
     pdf_source: Literal[
-        "user_upload", "open_access", "not_available"
+        "user_upload", "open_access", "library", "not_available"
     ] | None = None
     journal_url: str | None = None
 

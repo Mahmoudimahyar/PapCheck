@@ -1,23 +1,36 @@
 """Session management endpoints."""
 
 import logging
+import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
+from sqlmodel import Session as DBSession
 
+from refcheck.db.deps import get_db
+from refcheck.db.models import SessionDB
+from refcheck.db.session_repo import (
+    create_session as db_create_session,
+)
+from refcheck.db.session_repo import (
+    delete_session as db_delete_session,
+)
+from refcheck.db.session_repo import (
+    get_session as db_get_session,
+)
+from refcheck.db.session_repo import (
+    list_sessions as db_list_sessions,
+)
+from refcheck.db.session_repo import (
+    update_session as db_update_session,
+)
 from refcheck.models.pipeline import Session
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Max upload size per file: 100 MB
-_MAX_UPLOAD_BYTES = 100 * 1024 * 1024
-
-# In-memory session store (MVP — replace with DB later)
-_SESSIONS: dict[str, Session] = {}
-_SESSION_DIRS: dict[str, Path] = {}
 _BASE_DIR = Path.home() / ".refcheck" / "sessions"
 
 
@@ -27,10 +40,20 @@ class StartResponse(BaseModel):
     message: str = "Pipeline started"
 
 
+class SessionListResponse(BaseModel):
+    """Paginated session list response."""
+
+    sessions: list[Session]
+    total: int
+    page: int
+    per_page: int
+
+
 @router.post("/api/sessions", response_model=Session, status_code=201)
 async def create_session(
     manuscript: UploadFile,
     pdfs: list[UploadFile] | None = None,  # noqa: B006
+    db: DBSession = Depends(get_db),
 ) -> Session:
     """Create a new verification session with uploaded files."""
     if not manuscript.filename or not manuscript.filename.endswith(".docx"):
@@ -40,12 +63,10 @@ async def create_session(
     session_dir = _BASE_DIR / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save manuscript
     ms_path = session_dir / manuscript.filename
     content = await manuscript.read()
     ms_path.write_bytes(content)
 
-    # Save PDFs
     pdf_count = 0
     pdf_dir = session_dir / "pdfs"
     if pdfs:
@@ -57,51 +78,100 @@ async def create_session(
                 pdf_path.write_bytes(pdf_content)
                 pdf_count += 1
 
-    session = Session(
+    session_db = SessionDB(
+        id=session_id,
+        manuscript_filename=manuscript.filename or "unknown.docx",
+        pdf_count=pdf_count,
+        manuscript_path=str(ms_path),
+        pdf_dir=str(pdf_dir),
+    )
+    db_create_session(db, session_db)
+    logger.info("Created session %s with %d PDFs", session_id, pdf_count)
+
+    return Session(
         id=session_id,
         manuscript_filename=manuscript.filename or "unknown.docx",
         pdf_count=pdf_count,
     )
-    _SESSIONS[session_id] = session
-    _SESSION_DIRS[session_id] = session_dir
-
-    logger.info("Created session %s with %d PDFs", session_id, pdf_count)
-    return session
 
 
 @router.get("/api/sessions/{session_id}", response_model=Session)
-async def get_session(session_id: str) -> Session:
+async def get_session(
+    session_id: str,
+    db: DBSession = Depends(get_db),
+) -> Session:
     """Get session status."""
-    session = _SESSIONS.get(session_id)
-    if not session:
+    sess = db_get_session(db, session_id)
+    if not sess:
         raise HTTPException(404, "Session not found")
-    return session
+    return Session(
+        id=sess.id,
+        status=sess.status,  # type: ignore[arg-type]
+        created_at=sess.created_at,
+        manuscript_filename=sess.manuscript_filename,
+        pdf_count=sess.pdf_count,
+    )
 
 
-@router.post("/api/sessions/{session_id}/start", response_model=StartResponse)
+@router.get("/api/sessions", response_model=SessionListResponse)
+async def list_sessions(
+    page: int = 1,
+    per_page: int = 10,
+    db: DBSession = Depends(get_db),
+) -> SessionListResponse:
+    """List all sessions with pagination."""
+    offset = (page - 1) * per_page
+    sessions_db, total = db_list_sessions(db, limit=per_page, offset=offset)
+    sessions = [
+        Session(
+            id=s.id,
+            status=s.status,  # type: ignore[arg-type]
+            created_at=s.created_at,
+            manuscript_filename=s.manuscript_filename,
+            pdf_count=s.pdf_count,
+        )
+        for s in sessions_db
+    ]
+    return SessionListResponse(
+        sessions=sessions, total=total, page=page, per_page=per_page,
+    )
+
+
+@router.post(
+    "/api/sessions/{session_id}/start", response_model=StartResponse,
+)
 async def start_pipeline(
     session_id: str,
     background_tasks: BackgroundTasks,
+    db: DBSession = Depends(get_db),
 ) -> StartResponse:
     """Start or resume the verification pipeline."""
-    session = _SESSIONS.get(session_id)
-    if not session:
+    sess = db_get_session(db, session_id)
+    if not sess:
         raise HTTPException(404, "Session not found")
 
     from refcheck.services.pipeline_runner import run_pipeline
 
-    session_dir = _SESSION_DIRS[session_id]
+    session_dir = _BASE_DIR / session_id
     background_tasks.add_task(run_pipeline, session_id, session_dir)
-
-    _SESSIONS[session_id] = session.model_copy(update={"status": "running"})
+    db_update_session(db, session_id, status="running")
     return StartResponse()
 
 
-def get_session_store() -> dict[str, Session]:
-    """Access session store (for testing)."""
-    return _SESSIONS
+@router.delete("/api/sessions/{session_id}", status_code=200)
+async def delete_session(
+    session_id: str,
+    db: DBSession = Depends(get_db),
+) -> dict[str, str]:
+    """Delete a session and all associated data and files."""
+    deleted = db_delete_session(db, session_id)
+    if not deleted:
+        raise HTTPException(404, "Session not found")
 
+    # Clean up files on disk
+    session_dir = _BASE_DIR / session_id
+    if session_dir.exists():
+        shutil.rmtree(session_dir, ignore_errors=True)
+        logger.info("Removed session directory: %s", session_dir)
 
-def get_session_dirs() -> dict[str, Path]:
-    """Access session directories (for testing)."""
-    return _SESSION_DIRS
+    return {"message": f"Session {session_id} deleted"}

@@ -49,6 +49,7 @@ class TestCallLLM:
                 template="test_prompt",
                 variables={"topic": "testing"},
                 output_model=MockLLMOutput,
+                use_cache=False,
             )
             assert result.summary == "Test summary"
             assert result.confidence == 0.85
@@ -71,9 +72,10 @@ class TestCallLLM:
 
             result = await call_llm(
                 template="test_prompt",
-                variables={"topic": "test"},
+                variables={"topic": "test_retry"},
                 output_model=MockLLMOutput,
                 max_retries=1,
+                use_cache=False,
             )
             assert result.summary == "Retried"
 
@@ -89,7 +91,8 @@ class TestCallLLM:
             with pytest.raises(LLMResponseInvalidError):
                 await call_llm(
                     template="test_prompt",
-                    variables={"topic": "test"},
+                    variables={"topic": "test_fail"},
                     output_model=MockLLMOutput,
                     max_retries=1,
+                    use_cache=False,
                 )

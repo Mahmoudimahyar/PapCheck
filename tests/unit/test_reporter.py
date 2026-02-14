@@ -220,6 +220,25 @@ class TestReporter:
         full_text = "\n".join(p.text for p in doc.paragraphs)
         assert "RETRACTED OR CORRECTED" not in full_text
 
+    def test_long_titles_not_truncated(self, tmp_path: Path) -> None:
+        """Long reference titles appear in full, not truncated."""
+        long_title = (
+            "A Very Long Title That Describes an Important Study "
+            "About Hydrogel-Based Drug Delivery Systems for "
+            "Immunomodulation in Organ Transplantation Models"
+        )
+        refs = [Reference(id=1, title=long_title, source_status="found")]
+        state = _make_state(refs)
+        output = tmp_path / "report.docx"
+
+        generate_report(state, output)
+        doc = docx.Document(str(output))
+        # Check the table for the full title
+        table = doc.tables[0]
+        title_cell = table.rows[1].cells[1].text
+        assert title_cell == long_title
+        assert "..." not in title_cell
+
     def test_v1_methodology_note(self, tmp_path: Path) -> None:
         """V1 report includes methodology note with model name."""
         refs = [Reference(id=1, title="Paper 1", source_status="found")]

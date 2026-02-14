@@ -39,34 +39,65 @@ def find_relevant_sections(
     Uses keyword overlap scoring to select the top sections.
     Returns empty list if PDF cannot be read.
     """
+    pairs = find_relevant_sections_with_headings(claim, pdf_path, max_sections)
+    return [text for _, text in pairs]
+
+
+def find_relevant_sections_with_headings(
+    claim: Claim,
+    pdf_path: Path,
+    max_sections: int = 5,
+) -> list[tuple[str, str]]:
+    """Find sections returning (heading, text) pairs.
+
+    Returns empty list if PDF cannot be read.
+    """
     full_text = _extract_pdf_text(pdf_path)
     if not full_text:
         return []
 
-    # Short PDFs (abstract only) — return full text
     if len(full_text) < _SHORT_PDF_CHARS:
-        return [full_text]
+        return [("Full Text", full_text)]
 
     paragraphs = _split_into_paragraphs(full_text)
     if not paragraphs:
-        return [full_text[:_ABSTRACT_FALLBACK_CHARS]]
+        return [("Abstract", full_text[:_ABSTRACT_FALLBACK_CHARS])]
 
     keywords = _extract_keywords(claim.extracted_claim)
     numbers = _extract_numbers(claim.extracted_claim)
 
-    scored = []
+    scored: list[tuple[float, str, str]] = []
     for para in paragraphs:
         score = _score_section(para, keywords, numbers)
         if score > _MIN_SCORE_THRESHOLD:
-            scored.append((score, para))
+            heading = _guess_heading(para)
+            scored.append((score, heading, para))
 
     scored.sort(key=lambda x: x[0], reverse=True)
 
     if not scored:
-        # Fallback: return the abstract (first ~500 chars)
-        return [full_text[:_ABSTRACT_FALLBACK_CHARS]]
+        return [("Abstract", full_text[:_ABSTRACT_FALLBACK_CHARS])]
 
-    return [text for _, text in scored[:max_sections]]
+    return [(h, text) for _, h, text in scored[:max_sections]]
+
+
+_HEADING_PATTERN = re.compile(
+    r"^(Abstract|Introduction|Methods|Results|Discussion|Conclusion"
+    r"|Background|Materials|References|Acknowledgments)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _guess_heading(paragraph: str) -> str:
+    """Try to infer a section heading from a paragraph's first line."""
+    first_line = paragraph.split("\n", maxsplit=1)[0].strip()
+    match = _HEADING_PATTERN.match(first_line)
+    if match:
+        return match.group(1).title()
+    # If first line is short and looks like a heading, use it
+    if len(first_line) < 60 and first_line[0:1].isupper():
+        return first_line
+    return "Source Section"
 
 
 def _extract_pdf_text(pdf_path: Path) -> str:

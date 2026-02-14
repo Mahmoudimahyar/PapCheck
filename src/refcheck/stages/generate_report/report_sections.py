@@ -116,9 +116,7 @@ def add_methodology_note(doc: "DocxDocument", total: int) -> None:
     )
 
 
-def _count_verdicts(
-    verifications: list[VerificationResult],
-) -> dict[str, int]:
+def _count_verdicts(verifications: list[VerificationResult]) -> dict[str, int]:
     """Count verdicts by type."""
     counts = {
         "supported": 0, "partially_supported": 0,

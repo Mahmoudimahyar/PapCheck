@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from refcheck.models.evidence import EvidenceSection
+
 Verdict = Literal[
     "supported",
     "partially_supported",
@@ -34,6 +36,7 @@ class VerificationResult(BaseModel):
     user_override_reason: str = ""
     original_verdict: Verdict | None = None
     original_confidence: float | None = None
+    evidence_sections: list[EvidenceSection] = Field(default_factory=list)
 
 
 class AtomicVerification(BaseModel):

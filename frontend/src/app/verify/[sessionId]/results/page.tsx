@@ -148,6 +148,11 @@ export default function ResultsPage({
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold">Verification Results</h2>
         <div className="flex gap-2">
+          <Link href={`/verify/${sessionId}/viewer`}>
+            <Button variant="outline" size="sm">
+              Manuscript View
+            </Button>
+          </Link>
           <Link href={`/verify/${sessionId}/report`}>
             <Button variant="outline" size="sm">
               View Report
