@@ -1,4 +1,4 @@
-"""Verification result data models for V1 claim verification."""
+"""Verification result data models for V1 + V4 claim verification."""
 
 from typing import Literal
 
@@ -15,6 +15,16 @@ Verdict = Literal[
 ]
 
 
+class VoteRecord(BaseModel):
+    """Lightweight vote record stored per verification result."""
+
+    model_name: str = ""
+    abbreviation: str = ""
+    tier: int = 0
+    verdict: str = ""
+    confidence: float = 0.0
+
+
 class VerificationResult(BaseModel):
     """Result of verifying one claim against its cited source."""
 
@@ -26,7 +36,7 @@ class VerificationResult(BaseModel):
     )
     evidence_quotes: list[str] = Field(default_factory=list)
     reasoning: str = ""
-    tier: Literal[1, 2, 3] = 1
+    tier: int = 1
     source_coverage: Literal[
         "full_text", "abstract_only", "relevant_sections", "no_source"
     ] = "no_source"
@@ -37,6 +47,13 @@ class VerificationResult(BaseModel):
     original_verdict: Verdict | None = None
     original_confidence: float | None = None
     evidence_sections: list[EvidenceSection] = Field(default_factory=list)
+    # V4: Multi-model voting fields
+    votes: list[VoteRecord] = Field(default_factory=list)
+    consensus_type: str = ""
+    final_tier: int = 0
+    escalation_path: list[int] = Field(default_factory=list)
+    total_models_consulted: int = 0
+    agreement_ratio: float = 0.0
 
 
 class AtomicVerification(BaseModel):

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "next-themes";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeToggleButton } from "@/components/refcheck/theme-toggle";
 import "./globals.css";
 
@@ -17,11 +18,13 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
-          <header className="border-b border-border px-6 py-3 flex items-center justify-between">
-            <h1 className="text-xl font-semibold tracking-tight">RefCheck AI</h1>
-            <ThemeToggleButton />
-          </header>
-          <main className="max-w-6xl mx-auto px-6 py-8">{children}</main>
+          <TooltipProvider delayDuration={200}>
+            <header className="border-b border-border px-6 py-3 flex items-center justify-between">
+              <h1 className="text-xl font-semibold tracking-tight">RefCheck AI</h1>
+              <ThemeToggleButton />
+            </header>
+            <main className="max-w-6xl mx-auto px-6 py-8">{children}</main>
+          </TooltipProvider>
         </ThemeProvider>
       </body>
     </html>

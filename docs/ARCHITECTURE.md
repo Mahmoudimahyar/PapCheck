@@ -39,11 +39,12 @@ Upload (DOCX + PDFs)
 ```
 Upload (DOCX + PDFs)
   → Stage 1: Parse DOCX ──► ParsedManuscript
-  → Stage 2: Extract Claims ► list[Claim]           ← user reviews
+  → Stage 2: Detect Citations ► list[VerificationUnit] ← user reviews
   → Stage 3: Match PDFs ──► list[MatchResult]        ← user confirms
   → Stage 4: Resolve Gaps ─► list[Reference]         ← user uploads
   → Stage 5: Verify Claims ► list[VerificationResult] ← user resolves (V2)
-  → Stage 6: Full Report ──► DOCX (verification report)
+  → Stage 6: Missing Citation Detection ► list[MissingCitation] ← user reviews
+  → Stage 7: Full Report ──► DOCX (verification report)
 ```
 
 ### Stage Details
@@ -51,11 +52,12 @@ Upload (DOCX + PDFs)
 | Stage | Module | Input | Output | User Intervention | Feature Spec |
 |-------|--------|-------|--------|-------------------|-------------|
 | 1 | `stages/parse_docx/` | DOCX file | `ParsedManuscript` | IP-1: confirm refs | `01_docx_parsing.md` |
-| 2 | `stages/extract_claims/` | `ParsedManuscript` | `list[Claim]` | IP-2: review claims | `02_claim_extraction.md` |
+| 2 | `stages/detect_citations/` | `ParsedManuscript` | `list[VerificationUnit]` | IP-2: review citations | `08_citation_first_verification.md` |
 | 3 | `stages/match_pdfs/` | `list[Reference]` + PDFs | `list[MatchResult]` | IP-3: confirm matches | `03_pdf_matching.md` |
 | 4 | `stages/resolve_gaps/` | `list[Reference]` | Updated refs with PDFs | IP-4: upload paywalled | `04_gap_resolution.md` |
-| 5 | `stages/verify_claims/` | Claims + References | `list[VerificationResult]` | IP-5,6: resolve ambiguity | `05_verification.md` |
-| 6 | `stages/generate_report/` | All pipeline data | DOCX report | IP-7: accept/override | `06_report_generation.md` |
+| 5 | `stages/verify_claims/` | VerificationUnits + References | `list[VerificationResult]` | IP-5,6: resolve ambiguity | `05_verification.md` |
+| 6 | `stages/detect_citations/` (missing) | `ParsedManuscript` | `list[MissingCitation]` | IP-2b: review missing | `08_citation_first_verification.md` |
+| 7 | `stages/generate_report/` | All pipeline data | DOCX report | IP-7: accept/override | `06_report_generation.md` |
 
 **Key rule:** Stages never import from each other. They communicate only through Pydantic models defined in `src/refcheck/models/`.
 

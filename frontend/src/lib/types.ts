@@ -97,6 +97,11 @@ export interface VerificationResult {
   user_override: boolean;
   user_override_reason: string;
   atomic_results?: AtomicVerification[];
+  // V4: Multi-model voting fields
+  consensus_type?: string;
+  final_tier?: number;
+  total_models_consulted?: number;
+  agreement_ratio?: number;
 }
 
 export interface AtomicVerification {
@@ -164,6 +169,10 @@ export interface ParagraphClaim {
   verdict: string;
   confidence: number;
   reference_ids: number[];
+  consensus_type?: string;
+  final_tier?: number;
+  model_count?: number;
+  agreeing_count?: number;
 }
 
 export interface ManuscriptParagraph {
@@ -207,6 +216,39 @@ export interface EvidenceResponse {
     location: ClaimLocation | null;
   };
   verifications: VerificationEvidence[];
+  voting_record?: VotingRecord;
+}
+
+// V4: Multi-model voting types
+export interface ModelVote {
+  model_name: string;
+  abbreviation: string;
+  tier: number;
+  verdict: string;
+  confidence: number;
+  reasoning: string;
+  evidence_quotes: string[];
+  response_time_ms: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+export interface VotingRecord {
+  votes: ModelVote[];
+  consensus_type: string;
+  final_tier: number;
+  escalation_path: number[];
+  agreement_ratio: number;
+  total_models_consulted: number;
+}
+
+export interface CostSummary {
+  total_usd: number;
+  total_calls: number;
+  by_model: Record<string, number>;
+  by_task: Record<string, number>;
+  by_tier: Record<number, number>;
 }
 
 // V2 Report types

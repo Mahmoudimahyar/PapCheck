@@ -134,6 +134,10 @@ def _build_items(
             user_override=v.user_override,
             user_override_reason=v.user_override_reason,
             claim=claim_detail,
+            consensus_type=v.consensus_type,
+            final_tier=v.final_tier,
+            total_models_consulted=v.total_models_consulted,
+            agreement_ratio=v.agreement_ratio,
         ))
     return items
 

@@ -105,6 +105,8 @@ function highlightParagraph(
     const baseStyle = VERDICT_HIGHLIGHT[claim.verdict] ?? VERDICT_HIGHLIGHT.pending;
     const selectedStyle = isSelected ? SELECTED_RING : "";
 
+    const showBadge = claim.model_count && claim.model_count > 0 && claim.agreeing_count !== claim.model_count;
+
     parts.push(
       <span
         key={`c-${claim.claim_id}-${start}`}
@@ -113,6 +115,11 @@ function highlightParagraph(
         title={`Claim #${claim.claim_id}: ${claim.verdict} (${Math.round(claim.confidence * 100)}%)`}
       >
         {text.slice(start, end)}
+        {showBadge && (
+          <span className="text-[10px] text-muted-foreground ml-0.5 align-super">
+            {claim.agreeing_count}/{claim.model_count}
+          </span>
+        )}
       </span>
     );
     lastEnd = end;

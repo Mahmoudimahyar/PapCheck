@@ -43,9 +43,11 @@ Each feature has an overall goal and sub-features. Sub-features are assigned to 
 
 ---
 
-### Feature 2: Claim-Citation Pair Extraction
+### Feature 2: Claim-Citation Pair Extraction (DEPRECATED — Replaced by Feature 8: Citation-First Verification)
 
 **Goal:** For every citation in the manuscript, identify what specific claim it supports and classify the citation's role, with ≥85% accuracy.
+
+**Note:** This feature is superseded by Feature 8 (Citation-First Verification) in V4. LLM-based claim extraction is replaced by deterministic citation detection. The atomic decomposition concept may still be applied to VerificationUnits in future versions.
 
 | Sub-feature | MVP | V1 | V2 | V3 |
 |------------|-----|----|----|-----|

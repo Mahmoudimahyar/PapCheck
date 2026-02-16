@@ -5,6 +5,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from refcheck.models.citation import (
+    CitationInstance,
+    MissingCitation,
+    VerificationUnit,
+)
 from refcheck.models.claim import Claim
 from refcheck.models.matching import MatchResult
 from refcheck.models.reference import ParsedManuscript, Reference
@@ -64,6 +69,11 @@ class PipelineState(BaseModel):
     status: Literal[
         "created", "running", "paused", "complete", "error"
     ] = "created"
+    # V4: Citation-first pipeline fields
+    verification_units: list[VerificationUnit] = Field(default_factory=list)
+    all_citations: list[CitationInstance] = Field(default_factory=list)
+    unmapped_citations: list[CitationInstance] = Field(default_factory=list)
+    missing_citations: list[MissingCitation] = Field(default_factory=list)
 
 
 class Session(BaseModel):

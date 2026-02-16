@@ -166,7 +166,7 @@ def db_to_verification(db_v: VerificationDB) -> VerificationResult:
         confidence=db_v.confidence,
         evidence_quotes=json.loads(db_v.evidence_quotes_json),
         reasoning=db_v.reasoning,
-        tier=db_v.tier,  # type: ignore[arg-type]
+        tier=db_v.tier,
         source_coverage=db_v.source_coverage,  # type: ignore[arg-type]
         needs_user_review=db_v.needs_user_review,
         user_override=db_v.user_override,

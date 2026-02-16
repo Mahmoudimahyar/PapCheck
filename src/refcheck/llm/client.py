@@ -6,12 +6,16 @@ Windows event-loop issues with litellm's async httpx client.
 
 import json
 import logging
-import re
+import os
+import traceback
 from typing import TypeVar
 
 import litellm
 from pydantic import BaseModel, ValidationError
 
+from refcheck.llm.cache import check_llm_cache, store_llm_cache
+from refcheck.llm.json_extractor import extract_json_from_response
+from refcheck.llm.key_manager import rotate_anthropic_key
 from refcheck.llm.rate_limiter import call_with_rate_limit_retry
 from refcheck.llm.templates import render_template
 
@@ -20,42 +24,55 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 _DEFAULT_MODEL = "anthropic/claude-sonnet-4-5-20250929"
-
-# Pattern to strip markdown code fences from LLM responses
-_CODE_FENCE_RE = re.compile(
-    r"```(?:json)?\s*\n?(.*?)\n?\s*```",
-    re.DOTALL,
-)
+_DEFAULT_TIMEOUT = 120
 
 
-def _clean_json_response(raw: str) -> str:
-    """Strip markdown code fences and whitespace from LLM output."""
-    text = raw.strip()
-    match = _CODE_FENCE_RE.search(text)
-    if match:
-        text = match.group(1).strip()
-    return text
+def _is_billing_error(exc: Exception) -> bool:
+    """Check if an exception is a billing/credit exhaustion error."""
+    msg = str(exc).lower()
+    return "credit balance" in msg or "billing" in msg
 
 
 def _sync_completion(
     model: str,
     messages: list[dict[str, str]],
 ) -> str:
-    """Run litellm.completion synchronously (called from thread pool)."""
+    """Run litellm.completion synchronously (called via thread pool).
+
+    On billing/credit errors, rotates to the backup Anthropic API key
+    and retries once automatically.
+    """
+    try:
+        return _do_completion(model, messages)
+    except Exception as exc:
+        if _is_billing_error(exc) and "anthropic" in model.lower():
+            new_key = rotate_anthropic_key()
+            if new_key:
+                logger.warning(
+                    "Anthropic credit exhausted, rotating to backup key",
+                )
+                os.environ["ANTHROPIC_API_KEY"] = new_key
+                return _do_completion(model, messages)
+        raise
+
+
+def _do_completion(
+    model: str,
+    messages: list[dict[str, str]],
+) -> str:
+    """Execute a single litellm.completion call."""
     response = litellm.completion(
         model=model,
         messages=messages,
         response_format={"type": "json_object"},
         temperature=0.1,
+        timeout=_DEFAULT_TIMEOUT,
     )
     content: str | None = response.choices[0].message.content
     if not content:
         raise ValueError("Empty LLM response")
     result = str(content)
-    logger.info(
-        "LLM raw response len=%d first_char=%r first_50=%r",
-        len(result), result[0] if result else "?", result[:50],
-    )
+    logger.info("LLM raw len=%d first_50=%r", len(result), result[:50])
     return result
 
 
@@ -67,15 +84,14 @@ async def call_llm(
     max_retries: int = 1,
     use_cache: bool = True,
 ) -> T:
-    """Call an LLM with a rendered prompt template and validate output.
+    """Call LLM with rendered prompt, validate output via Pydantic.
 
-    V3: Checks diskcache before calling the LLM. Caches valid responses.
-    Retries on rate limits with exponential backoff (handled by
-    rate_limiter module). Retries once on parse/validation failure.
+    V4: Robust JSON extraction. Handles code fences, surrounding
+    text, partial JSON. Caches valid responses. Retries on parse
+    failures and rate limits with exponential backoff.
     """
-    # V3: Check cache first
     if use_cache:
-        cached = _check_llm_cache(template, variables, model, output_model)
+        cached = check_llm_cache(template, variables, model, output_model)
         if cached is not None:
             return cached
 
@@ -88,80 +104,48 @@ async def call_llm(
     for attempt in range(max_retries + 1):
         raw_content = ""
         try:
-            # V3: Rate-limit-aware call with exponential backoff
             raw_content = await call_with_rate_limit_retry(
                 _sync_completion, model, messages,
             )
-            content = _clean_json_response(raw_content)
+            content = extract_json_from_response(raw_content)
             if not content:
-                raise ValueError("Empty response after cleaning")
+                raise ValueError("Empty response after extraction")
             parsed = json.loads(content)
             result = output_model.model_validate(parsed)
             logger.info(
-                "LLM call succeeded: template=%s, attempt=%d",
-                template, attempt + 1,
+                "LLM OK: template=%s attempt=%d", template, attempt + 1,
             )
-            # V3: Cache the valid response
             if use_cache:
-                _store_llm_cache(template, variables, model, content)
+                store_llm_cache(template, variables, model, content)
             return result
 
         except (json.JSONDecodeError, ValidationError, ValueError) as exc:
             last_error = exc
             preview = raw_content[:500] if raw_content else "<empty>"
             logger.warning(
-                "LLM parse error (attempt %d): %s | raw[:%d]: %s",
-                attempt + 1, exc, len(raw_content), preview,
+                "LLM parse error (%d/%d): %s: %s | raw: %s",
+                attempt + 1, max_retries + 1,
+                type(exc).__name__, exc, preview,
             )
             if attempt < max_retries:
                 messages.append({
                     "role": "user",
                     "content": (
                         f"Your response was invalid: {exc}. "
-                        "Please return ONLY raw JSON with no "
-                        "markdown formatting or code fences."
+                        "Return ONLY raw JSON, no markdown."
                     ),
                 })
+        except Exception as exc:
+            logger.error(
+                "LLM call error (%d/%d): %s: %s\n%s",
+                attempt + 1, max_retries + 1,
+                type(exc).__name__, exc, traceback.format_exc(),
+            )
+            raise
 
     raise LLMResponseInvalidError(
         f"Failed after {max_retries + 1} attempts: {last_error}"
     )
-
-
-def _check_llm_cache(
-    template: str,
-    variables: dict[str, str],
-    model: str,
-    output_model: type[T],
-) -> T | None:
-    """Check the LLM cache for a matching response."""
-    try:
-        from refcheck.utils.cache import get_cached_llm_response
-
-        cached_json = get_cached_llm_response(template, variables, model)
-        if cached_json is None:
-            return None
-        parsed = json.loads(cached_json)
-        result = output_model.model_validate(parsed)
-        logger.info("LLM cache HIT: template=%s", template)
-        return result
-    except Exception:
-        return None
-
-
-def _store_llm_cache(
-    template: str,
-    variables: dict[str, str],
-    model: str,
-    response_json: str,
-) -> None:
-    """Store a valid LLM response in the cache."""
-    try:
-        from refcheck.utils.cache import cache_llm_response
-
-        cache_llm_response(template, variables, model, response_json)
-    except Exception:
-        logger.debug("Failed to cache LLM response", exc_info=True)
 
 
 class LLMResponseInvalidError(Exception):

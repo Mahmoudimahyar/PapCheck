@@ -26,6 +26,7 @@ from refcheck.api.routes.reports import router as reports_router  # noqa: E402
 from refcheck.api.routes.results import router as results_router  # noqa: E402
 from refcheck.api.routes.sessions import router as sessions_router  # noqa: E402
 from refcheck.db.engine import init_db  # noqa: E402
+from refcheck.llm.env_setup import setup_llm_env_vars  # noqa: E402
 from refcheck.utils.logging_config import setup_logging  # noqa: E402
 
 _logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ _logger = logging.getLogger(__name__)
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan: startup and shutdown hooks."""
     setup_logging()
+    setup_llm_env_vars()
     init_db()
     _logger.info(
         "RefCheck AI v3.0.0 started. DB_PATH=%s, ANTHROPIC_KEY=%s",

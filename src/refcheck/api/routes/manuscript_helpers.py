@@ -37,14 +37,23 @@ def best_verdict(
     return min(vs, key=lambda v: severity.get(v.verdict, 9)).verdict
 
 
+_REFERENCE_HEADINGS = {"references", "bibliography", "works cited"}
+
+
 def build_paragraphs_from_sections(
     sections: list[ManuscriptSection],
 ) -> list[ManuscriptParagraph]:
-    """Flatten sections into indexed paragraphs."""
+    """Flatten sections into indexed paragraphs.
+
+    Skips reference/bibliography sections so paragraph indices
+    match the citation detector exactly.
+    """
     paragraphs: list[ManuscriptParagraph] = []
     idx = 0
     for section in sections:
         heading = section.heading or ""
+        if heading.lower() in _REFERENCE_HEADINGS:
+            continue
         for text in _split_text(section.text):
             paragraphs.append(ManuscriptParagraph(
                 index=idx, text=text, section_heading=heading,

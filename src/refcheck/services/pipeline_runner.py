@@ -1,4 +1,4 @@
-"""Pipeline orchestrator: runs all 6 stages sequentially."""
+"""Pipeline orchestrator: runs all 7 stages sequentially (V4)."""
 
 import logging
 from pathlib import Path
@@ -6,30 +6,33 @@ from pathlib import Path
 from refcheck.api.routes.events import close_event_stream, emit_event
 from refcheck.db.engine import get_db_session
 from refcheck.db.session_repo import update_session
+from refcheck.llm.cost_tracker import CostTracker
 from refcheck.models.pipeline import PipelineEvent, PipelineState
 from refcheck.services.report_runner import run_report
 from refcheck.services.stage_runners import (
-    run_extract_claims,
+    run_detect_citations,
     run_match,
     run_parse,
     run_resolve,
-    run_verify,
 )
+from refcheck.services.verify_runner import run_missing_citations, run_verify
 
 logger = logging.getLogger(__name__)
 
 
 async def run_pipeline(session_id: str, session_dir: Path) -> None:
-    """Run the full V3 pipeline for a session (6 stages)."""
+    """Run the full V4 pipeline for a session (7 stages)."""
     state = PipelineState(session_id=session_id, status="running")
     _update_status(session_id, "running")
 
+    cost_tracker = CostTracker()
     try:
         state = await run_parse(session_id, session_dir, state)
-        state = await run_extract_claims(session_id, state)
+        state = await run_detect_citations(session_id, state)
         state = await run_match(session_id, session_dir, state)
         state = await run_resolve(session_id, state)
-        state = await run_verify(session_id, state)
+        state = await run_verify(session_id, state, cost_tracker)
+        state = await run_missing_citations(session_id, state)
         state = await run_report(session_id, session_dir, state)
 
         await emit_event(session_id, PipelineEvent(
@@ -67,18 +70,21 @@ async def resume_pipeline(session_id: str) -> None:
         session_id=session_id, status="running",
         current_stage=last_stage,
     )
+    cost_tracker = CostTracker()
     try:
         if last_stage < 1:
             state = await run_parse(session_id, session_dir, state)
         if last_stage < 2:
-            state = await run_extract_claims(session_id, state)
+            state = await run_detect_citations(session_id, state)
         if last_stage < 3:
             state = await run_match(session_id, session_dir, state)
         if last_stage < 4:
             state = await run_resolve(session_id, state)
         if last_stage < 5:
-            state = await run_verify(session_id, state)
+            state = await run_verify(session_id, state, cost_tracker)
         if last_stage < 6:
+            state = await run_missing_citations(session_id, state)
+        if last_stage < 7:
             state = await run_report(session_id, session_dir, state)
 
         await emit_event(session_id, PipelineEvent(

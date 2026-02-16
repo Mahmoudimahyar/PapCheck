@@ -30,6 +30,16 @@ class ClaimDetail(BaseModel):
     priority: str = ""
 
 
+class VoteSummary(BaseModel):
+    """Lightweight vote info for result items."""
+
+    model_name: str = ""
+    abbreviation: str = ""
+    tier: int = 0
+    verdict: str = ""
+    confidence: float = 0.0
+
+
 class ResultItem(BaseModel):
     """Single result in the results response."""
 
@@ -45,6 +55,11 @@ class ResultItem(BaseModel):
     user_override: bool = False
     user_override_reason: str = ""
     claim: ClaimDetail = Field(default_factory=ClaimDetail)
+    # V4: Multi-model voting fields
+    consensus_type: str = ""
+    final_tier: int = 0
+    total_models_consulted: int = 0
+    agreement_ratio: float = 0.0
 
 
 class ResultsResponse(BaseModel):

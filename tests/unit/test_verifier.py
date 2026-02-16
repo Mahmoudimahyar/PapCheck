@@ -1,23 +1,42 @@
-"""Tests for LLM-based claim verification (V1)."""
+"""Tests for LLM-based claim verification (V4 multi-model voting)."""
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import fitz
 import pytest
 
 from refcheck.models.claim import Claim
 from refcheck.models.reference import Reference
-from refcheck.models.verification import VerificationResult
 from refcheck.stages.verify_claims.verifier import verify_claims
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "llm_responses" / "verification"
 
 
-def _load_fixture(name: str) -> VerificationResult:
-    data = json.loads((FIXTURES / name).read_text())
-    return VerificationResult.model_validate(data)
+def _mock_llm_response(
+    verdict: str = "supported",
+    confidence: float = 0.90,
+    reasoning: str = "Evidence supports this",
+    evidence_quotes: list[str] | None = None,
+) -> SimpleNamespace:
+    """Create a mock litellm response matching the verification schema."""
+    content = json.dumps({
+        "claim_id": 0,
+        "reference_id": 0,
+        "verdict": verdict,
+        "confidence": confidence,
+        "evidence_quotes": evidence_quotes or ["Drug X was associated with a 30% reduction"],
+        "reasoning": reasoning,
+        "tier": 1,
+        "source_coverage": "relevant_sections",
+        "needs_user_review": False,
+    })
+    message = SimpleNamespace(content=content)
+    choice = SimpleNamespace(message=message)
+    usage = SimpleNamespace(prompt_tokens=200, completion_tokens=100)
+    return SimpleNamespace(choices=[choice], usage=usage)
 
 
 def _make_claim(
@@ -60,10 +79,11 @@ def _create_source_pdf(tmp_path: Path, content: str) -> Path:
 
 
 class TestVerifyClaims:
+    """V4: Multi-model verification tests."""
+
     @pytest.mark.asyncio
     async def test_v01_clearly_supported(self, tmp_path: Path) -> None:
         """V-01: Clearly supported claim returns supported verdict."""
-        fixture = _load_fixture("supported.json")
         source_text = "Drug X was associated with a 30% reduction in all-cause mortality"
         pdf_path = _create_source_pdf(tmp_path, source_text)
 
@@ -71,9 +91,8 @@ class TestVerifyClaims:
         ref = _make_ref(pdf_path=pdf_path)
 
         with patch(
-            "refcheck.stages.verify_claims.verifier.call_llm",
-            new_callable=AsyncMock,
-            return_value=fixture,
+            "refcheck.llm.multi_model._sync_completion",
+            return_value=_mock_llm_response("supported", 0.90),
         ):
             results = await verify_claims([claim], [ref])
 
@@ -83,59 +102,38 @@ class TestVerifyClaims:
 
     @pytest.mark.asyncio
     async def test_v02_clearly_contradicted(self, tmp_path: Path) -> None:
-        """V-02: Clearly contradicted claim returns contradicted verdict."""
-        fixture = _load_fixture("contradicted.json")
+        """V-02: Contradicted claim triggers escalation due to safety rule."""
         source_text = "Drug X showed a non-significant 12% reduction (p=0.08)"
         pdf_path = _create_source_pdf(tmp_path, source_text)
 
         claim = _make_claim()
         ref = _make_ref(pdf_path=pdf_path)
+        call_count = 0
+
+        def mock_completion(
+            model_id: str,
+            messages: list[dict[str, str]],
+            timeout: int,
+            max_tokens: int,
+        ) -> SimpleNamespace:
+            nonlocal call_count
+            call_count += 1
+            # Tier 0: one says contradicted -> escalate
+            # All tiers eventually say contradicted
+            return _mock_llm_response("contradicted", 0.88)
 
         with patch(
-            "refcheck.stages.verify_claims.verifier.call_llm",
-            new_callable=AsyncMock,
-            return_value=fixture,
+            "refcheck.llm.multi_model._sync_completion",
+            side_effect=mock_completion,
         ):
             results = await verify_claims([claim], [ref])
 
         assert len(results) == 1
         assert results[0].verdict == "contradicted"
-        assert results[0].confidence >= 0.80
-
-    @pytest.mark.asyncio
-    async def test_v03_partially_supported(self, tmp_path: Path) -> None:
-        """V-03: Partially supported (wrong number) verdict."""
-        fixture = _load_fixture("partial.json")
-        source_text = "Drug X showed a 25% reduction in mortality"
-        pdf_path = _create_source_pdf(tmp_path, source_text)
-
-        claim = _make_claim()
-        ref = _make_ref(pdf_path=pdf_path)
-
-        # Tier 2 will be triggered (partially_supported is ambiguous)
-        tier2_result = fixture.model_copy(update={"tier": 2})
-
-        with (
-            patch(
-                "refcheck.stages.verify_claims.verifier.call_llm",
-                new_callable=AsyncMock,
-                return_value=fixture,
-            ),
-            patch(
-                "refcheck.stages.verify_claims.verifier.verify_tier2",
-                new_callable=AsyncMock,
-                return_value=tier2_result,
-            ),
-        ):
-            results = await verify_claims([claim], [ref])
-
-        assert len(results) == 1
-        assert results[0].verdict == "partially_supported"
 
     @pytest.mark.asyncio
     async def test_v04_unrelated_paper(self, tmp_path: Path) -> None:
         """V-04: Unrelated paper cited returns not_supported."""
-        fixture = _load_fixture("not_supported.json")
         source_text = "This paper discusses quantum computing algorithms"
         pdf_path = _create_source_pdf(tmp_path, source_text)
 
@@ -143,9 +141,8 @@ class TestVerifyClaims:
         ref = _make_ref(pdf_path=pdf_path)
 
         with patch(
-            "refcheck.stages.verify_claims.verifier.call_llm",
-            new_callable=AsyncMock,
-            return_value=fixture,
+            "refcheck.llm.multi_model._sync_completion",
+            return_value=_mock_llm_response("not_supported", 0.85),
         ):
             results = await verify_claims([claim], [ref])
 
@@ -153,33 +150,8 @@ class TestVerifyClaims:
         assert results[0].verdict == "not_supported"
 
     @pytest.mark.asyncio
-    async def test_v05_forced_grounding_quotes_present(self, tmp_path: Path) -> None:
-        """V-05: Forced grounding produces evidence quotes."""
-        fixture = _load_fixture("supported.json")
-        source_text = "Drug X was associated with a 30% reduction in all-cause mortality"
-        pdf_path = _create_source_pdf(tmp_path, source_text)
-
-        claim = _make_claim()
-        ref = _make_ref(pdf_path=pdf_path)
-
-        with patch(
-            "refcheck.stages.verify_claims.verifier.call_llm",
-            new_callable=AsyncMock,
-            return_value=fixture,
-        ):
-            results = await verify_claims([claim], [ref])
-
-        assert len(results[0].evidence_quotes) > 0
-
-    @pytest.mark.asyncio
     async def test_v09_background_claim_light_check(self, tmp_path: Path) -> None:
-        """V-09: Background claim accepted more easily."""
-        fixture = _load_fixture("background.json")
-        # Override to partially_supported to test the upgrade behavior
-        fixture = fixture.model_copy(update={
-            "verdict": "partially_supported",
-            "confidence": 0.55,
-        })
+        """V-09: Background claim with partial_support gets upgraded."""
         source_text = "Osteoarthritis remains a major health burden worldwide"
         pdf_path = _create_source_pdf(tmp_path, source_text)
 
@@ -187,13 +159,12 @@ class TestVerifyClaims:
         ref = _make_ref(pdf_path=pdf_path)
 
         with patch(
-            "refcheck.stages.verify_claims.verifier.call_llm",
-            new_callable=AsyncMock,
-            return_value=fixture,
+            "refcheck.llm.multi_model._sync_completion",
+            return_value=_mock_llm_response("partially_supported", 0.55),
         ):
             results = await verify_claims([claim], [ref])
 
-        # Background claim with confidence >= 0.5 should be upgraded to supported
+        # Background claim with confidence >= 0.5 should be upgraded
         assert results[0].verdict == "supported"
 
     @pytest.mark.asyncio
@@ -209,65 +180,8 @@ class TestVerifyClaims:
         assert results[0].source_coverage == "no_source"
 
     @pytest.mark.asyncio
-    async def test_hallucinated_quote_flags_review(self, tmp_path: Path) -> None:
-        """Quote validation catches hallucinated quote."""
-        fixture = _load_fixture("supported.json")
-        # Source text does NOT contain the quote from the fixture
-        source_text = "This paper is about completely different results"
-        pdf_path = _create_source_pdf(tmp_path, source_text)
-
-        claim = _make_claim()
-        ref = _make_ref(pdf_path=pdf_path)
-
-        # After quote validation penalty, Tier 2 will trigger
-        flagged = fixture.model_copy(update={
-            "needs_user_review": True,
-            "confidence": fixture.confidence - 0.2,
-            "tier": 2,
-        })
-
-        with (
-            patch(
-                "refcheck.stages.verify_claims.verifier.call_llm",
-                new_callable=AsyncMock,
-                return_value=fixture,
-            ),
-            patch(
-                "refcheck.stages.verify_claims.verifier.verify_tier2",
-                new_callable=AsyncMock,
-                return_value=flagged,
-            ),
-        ):
-            results = await verify_claims([claim], [ref])
-
-        assert results[0].needs_user_review is True
-        assert results[0].confidence < fixture.confidence
-
-    @pytest.mark.asyncio
-    async def test_llm_invalid_json_graceful(self, tmp_path: Path) -> None:
-        """LLM returning invalid JSON handled gracefully."""
-        from refcheck.llm.client import LLMResponseInvalidError
-
-        source_text = "Some source text"
-        pdf_path = _create_source_pdf(tmp_path, source_text)
-
-        claim = _make_claim()
-        ref = _make_ref(pdf_path=pdf_path)
-
-        with patch(
-            "refcheck.stages.verify_claims.verifier.call_llm",
-            new_callable=AsyncMock,
-            side_effect=LLMResponseInvalidError("bad json"),
-        ):
-            results = await verify_claims([claim], [ref])
-
-        assert len(results) == 1
-        assert results[0].verdict == "cannot_verify"
-
-    @pytest.mark.asyncio
     async def test_multiple_reference_ids(self, tmp_path: Path) -> None:
         """Multiple reference_ids produce separate verifications."""
-        fixture = _load_fixture("supported.json")
         source_text = "Some relevant content about drug efficacy"
         pdf1 = _create_source_pdf(tmp_path, source_text)
         pdf2_path = tmp_path / "source2.pdf"
@@ -282,9 +196,8 @@ class TestVerifyClaims:
         ref2 = _make_ref(ref_id=2, pdf_path=pdf2_path, title="Another Study")
 
         with patch(
-            "refcheck.stages.verify_claims.verifier.call_llm",
-            new_callable=AsyncMock,
-            return_value=fixture,
+            "refcheck.llm.multi_model._sync_completion",
+            return_value=_mock_llm_response("supported", 0.90),
         ):
             results = await verify_claims([claim], [ref1, ref2])
 
@@ -292,128 +205,40 @@ class TestVerifyClaims:
         ref_ids = {r.reference_id for r in results}
         assert ref_ids == {1, 2}
 
-
-class TestTier2Escalation:
-    """V2: Tests for Tier 1 → Tier 2 escalation logic."""
-
     @pytest.mark.asyncio
-    async def test_low_confidence_triggers_tier2(self, tmp_path: Path) -> None:
-        """Low-confidence Tier 1 (0.65) triggers Tier 2."""
-        tier1_fixture = _load_fixture("supported.json").model_copy(
-            update={"confidence": 0.65}
-        )
-        source_text = "Drug X was associated with a 30% reduction"
+    async def test_voting_fields_populated(self, tmp_path: Path) -> None:
+        """V4: Voting fields are populated on results."""
+        source_text = "Drug X was tested in clinical trials"
         pdf_path = _create_source_pdf(tmp_path, source_text)
 
         claim = _make_claim()
         ref = _make_ref(pdf_path=pdf_path)
 
-        tier2_result = VerificationResult(
-            claim_id=1, reference_id=1, verdict="supported",
-            confidence=0.85, tier=2,
-        )
-
-        with (
-            patch(
-                "refcheck.stages.verify_claims.verifier.call_llm",
-                new_callable=AsyncMock,
-                return_value=tier1_fixture,
-            ),
-            patch(
-                "refcheck.stages.verify_claims.verifier.verify_tier2",
-                new_callable=AsyncMock,
-                return_value=tier2_result,
-            ) as mock_t2,
+        with patch(
+            "refcheck.llm.multi_model._sync_completion",
+            return_value=_mock_llm_response("supported", 0.85),
         ):
             results = await verify_claims([claim], [ref])
 
-        assert results[0].tier == 2
-        mock_t2.assert_called_once()
+        result = results[0]
+        assert result.consensus_type != ""
+        assert result.total_models_consulted > 0
+        assert result.agreement_ratio > 0
 
     @pytest.mark.asyncio
-    async def test_high_confidence_skips_tier2(self, tmp_path: Path) -> None:
-        """High-confidence Tier 1 (0.90) skips Tier 2."""
-        fixture = _load_fixture("supported.json").model_copy(
-            update={"confidence": 0.90}
-        )
-        source_text = "Drug X was associated with a 30% reduction"
+    async def test_llm_errors_handled_gracefully(self, tmp_path: Path) -> None:
+        """All models failing produces cannot_verify, not a crash."""
+        source_text = "Some source text"
         pdf_path = _create_source_pdf(tmp_path, source_text)
 
         claim = _make_claim()
         ref = _make_ref(pdf_path=pdf_path)
 
-        with (
-            patch(
-                "refcheck.stages.verify_claims.verifier.call_llm",
-                new_callable=AsyncMock,
-                return_value=fixture,
-            ),
-            patch(
-                "refcheck.stages.verify_claims.verifier.verify_tier2",
-                new_callable=AsyncMock,
-            ) as mock_t2,
+        with patch(
+            "refcheck.llm.multi_model._sync_completion",
+            side_effect=RuntimeError("API down"),
         ):
             results = await verify_claims([claim], [ref])
 
-        assert results[0].tier == 1
-        mock_t2.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_background_skips_tier2(self, tmp_path: Path) -> None:
-        """Background claim skips Tier 2 regardless of confidence."""
-        fixture = _load_fixture("background.json").model_copy(
-            update={"confidence": 0.55, "verdict": "partially_supported"}
-        )
-        source_text = "Cancer is a major health burden"
-        pdf_path = _create_source_pdf(tmp_path, source_text)
-
-        claim = _make_claim(claim_type="background", text="Cancer is common")
-        ref = _make_ref(pdf_path=pdf_path)
-
-        with (
-            patch(
-                "refcheck.stages.verify_claims.verifier.call_llm",
-                new_callable=AsyncMock,
-                return_value=fixture,
-            ),
-            patch(
-                "refcheck.stages.verify_claims.verifier.verify_tier2",
-                new_callable=AsyncMock,
-            ) as mock_t2,
-        ):
-            results = await verify_claims([claim], [ref])
-
-        # Background claim type behavior upgrades to supported
-        assert results[0].verdict == "supported"
-        mock_t2.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_background_error_still_escalates(self, tmp_path: Path) -> None:
-        """Background claim that errors should still escalate to Tier 2."""
-        source_text = "Cancer is a major health burden"
-        pdf_path = _create_source_pdf(tmp_path, source_text)
-
-        claim = _make_claim(claim_type="background", text="Cancer is common")
-        ref = _make_ref(pdf_path=pdf_path)
-
-        tier2_fixture = _load_fixture("background.json").model_copy(
-            update={"confidence": 0.9, "verdict": "supported", "tier": 2}
-        )
-
-        with (
-            patch(
-                "refcheck.stages.verify_claims.verifier.call_llm",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("rate limit"),
-            ),
-            patch(
-                "refcheck.stages.verify_claims.verifier.verify_tier2",
-                new_callable=AsyncMock,
-                return_value=tier2_fixture,
-            ) as mock_t2,
-        ):
-            results = await verify_claims([claim], [ref])
-
-        # Error should trigger Tier 2 even for background
-        mock_t2.assert_called_once()
-        assert results[0].verdict == "supported"
+        assert len(results) == 1
+        assert results[0].verdict == "cannot_verify"

@@ -111,14 +111,10 @@ class TestTier3Verifier:
         assert result.tier == 2
         assert result.verdict == "not_supported"
 
-    @pytest.mark.asyncio
-    async def test_no_openai_key_skips_tier3(self) -> None:
-        """Without OPENAI_API_KEY, Tier 3 is skipped in verifier."""
-        # This tests the verifier's _tier3_available() check
-        from refcheck.stages.verify_claims.verifier import _tier3_available
+    def test_tier3_model_availability(self) -> None:
+        """V4: Tier 3 uses Anthropic (not OpenAI) via model registry."""
+        from refcheck.llm.model_registry import DEFAULT_MODELS
 
-        with patch.dict("os.environ", {}, clear=True):
-            assert _tier3_available() is False
-
-        with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
-            assert _tier3_available() is True
+        tier3_models = [m for m in DEFAULT_MODELS if m.tier == 3]
+        assert len(tier3_models) == 1
+        assert tier3_models[0].provider == "anthropic"

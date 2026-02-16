@@ -29,7 +29,8 @@ refcheck/
 │   │   └── pipeline.py
 │   ├── stages/                     # Pipeline stages (one folder per feature spec)
 │   │   ├── parse_docx/
-│   │   ├── extract_claims/
+│   │   ├── detect_citations/       # V4: Citation-first detection (replaces extract_claims)
+│   │   ├── extract_claims/         # DEPRECATED: Kept for backward compatibility
 │   │   ├── match_pdfs/
 │   │   ├── resolve_gaps/
 │   │   ├── verify_claims/

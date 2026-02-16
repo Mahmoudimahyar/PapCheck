@@ -21,6 +21,8 @@ export default function ViewerPage({
   const [error, setError] = useState<string | null>(null);
   const [selectedClaimId, setSelectedClaimId] = useState<number | null>(null);
   const [verdictFilter, setVerdictFilter] = useState<string | null>(null);
+  const [showModelOpinions, setShowModelOpinions] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -50,9 +52,12 @@ export default function ViewerPage({
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "ArrowUp" || e.key === "k") handleNavigate("prev");
       if (e.key === "ArrowDown" || e.key === "j") handleNavigate("next");
       if (e.key === "Escape") setSelectedClaimId(null);
+      if (e.key === "m") setShowModelOpinions((prev) => !prev);
+      if (e.key === "d") setShowDetails((prev) => !prev);
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -118,6 +123,8 @@ export default function ViewerPage({
             claimId={selectedClaimId}
             onNavigate={handleNavigate}
             onClose={() => setSelectedClaimId(null)}
+            showModelOpinions={showModelOpinions}
+            showDetails={showDetails}
           />
         </div>
       </div>
@@ -127,7 +134,7 @@ export default function ViewerPage({
         {manuscript.unmapped_claims.length > 0 && (
           <> · {manuscript.unmapped_claims.length} unmapped claims</>
         )}
-        {" · Keyboard: ↑↓/jk navigate · Enter select · Esc close"}
+        {" · Keyboard: ↑↓/jk navigate · m model opinions · d details · Esc close"}
       </div>
     </div>
   );

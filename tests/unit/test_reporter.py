@@ -252,4 +252,4 @@ class TestReporter:
         doc = docx.Document(str(output))
         full_text = "\n".join(p.text for p in doc.paragraphs)
         assert "Methodology Note" in full_text
-        assert "Claude Sonnet" in full_text
+        assert "multi-model" in full_text.lower()

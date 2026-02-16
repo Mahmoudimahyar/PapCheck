@@ -103,16 +103,16 @@ def add_methodology_note(doc: "DocxDocument", total: int) -> None:
     doc.add_heading("Methodology Note", level=2)
     doc.add_paragraph(
         "This report was generated using RefCheck AI's automated "
-        "verification system."
+        "verification system with multi-model consensus voting."
     )
     doc.add_paragraph(
-        "Model: Claude Sonnet 4.5 (claude-sonnet-4-5-20250514) via litellm"
+        "V4: Tiered multi-model voting — cheap models do bulk work, "
+        "expensive models break ties. Up to 7 models across 4 tiers."
     )
-    doc.add_paragraph("Verification tier: Tier 1 (single-model forced grounding)")
     doc.add_paragraph(f"Total claim-reference pairs analyzed: {total}")
     doc.add_paragraph(
-        "Confidence scores reflect textual evidence strength. "
-        "Scores below 0.5 indicate insufficient evidence."
+        "Confidence scores reflect textual evidence strength and "
+        "model consensus. Scores below 0.5 indicate insufficient evidence."
     )
 
 

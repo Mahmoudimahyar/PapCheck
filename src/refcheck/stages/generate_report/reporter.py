@@ -10,6 +10,7 @@ from docx.shared import Pt, RGBColor
 
 from refcheck.models.pipeline import PipelineState
 from refcheck.models.reference import Reference
+from refcheck.stages.generate_report.cost_section import add_cost_section
 from refcheck.stages.generate_report.report_sections import (
     add_critical_findings,
     add_executive_summary,
@@ -50,6 +51,10 @@ def generate_report(state: PipelineState, output_path: Path) -> Path:
 
     _add_reference_table(doc, state.references, has_verifications)
     _add_not_found_section(doc, state.references)
+
+    # V4: Cost and tier statistics
+    if has_verifications:
+        add_cost_section(doc, state.verification_results)
 
     # V1: Methodology note
     if has_verifications:

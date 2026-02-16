@@ -1,4 +1,4 @@
-"""Stage 6: Report generation runner."""
+"""Stage 7: Report generation runner (V4)."""
 
 import asyncio
 import logging
@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 async def run_report(
     session_id: str, session_dir: Path, state: PipelineState,
 ) -> PipelineState:
-    """Run Stage 6: Generate report."""
+    """Run Stage 7: Generate report."""
     await emit_event(session_id, PipelineEvent(
-        stage=6, status="running", message="Generating report...",
+        stage=7, status="running", message="Generating report...",
     ))
     start = time.time()
     report_path = session_dir / f"refcheck_report_{session_id}.docx"
@@ -27,8 +27,8 @@ async def run_report(
 
     persist_report_path(session_id, str(report_path))
     await emit_event(session_id, PipelineEvent(
-        stage=6, status="complete", message="Report ready",
+        stage=7, status="complete", message="Report ready",
         elapsed_seconds=round(elapsed, 1),
     ))
-    update_stage(session_id, 6)
-    return state.model_copy(update={"current_stage": 6})
+    update_stage(session_id, 7)
+    return state.model_copy(update={"current_stage": 7})

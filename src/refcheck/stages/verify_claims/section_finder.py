@@ -2,6 +2,7 @@
 
 import logging
 import re
+import unicodedata
 from pathlib import Path
 
 import fitz
@@ -27,6 +28,7 @@ _STOP_WORDS = frozenset({
 _MIN_SCORE_THRESHOLD = 0.1
 _ABSTRACT_FALLBACK_CHARS = 500
 _SHORT_PDF_CHARS = 2000
+_MAX_SECTION_WORDS = 2000
 
 
 def find_relevant_sections(
@@ -76,9 +78,29 @@ def find_relevant_sections_with_headings(
     scored.sort(key=lambda x: x[0], reverse=True)
 
     if not scored:
-        return [("Abstract", full_text[:_ABSTRACT_FALLBACK_CHARS])]
+        return [("Abstract", sanitize_text(full_text[:_ABSTRACT_FALLBACK_CHARS]))]
 
-    return [(h, text) for _, h, text in scored[:max_sections]]
+    return [
+        (h, sanitize_text(text)) for _, h, text in scored[:max_sections]
+    ]
+
+
+def sanitize_text(text: str) -> str:
+    """Clean text for LLM consumption: remove nulls, normalize unicode."""
+    # Remove null bytes
+    text = text.replace("\x00", "")
+    # Remove non-printable control characters (keep newlines/tabs)
+    text = re.sub(r"[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+    # Normalize unicode (NFC)
+    text = unicodedata.normalize("NFC", text)
+    # Collapse excessive whitespace
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    # Truncate very long sections
+    words = text.split()
+    if len(words) > _MAX_SECTION_WORDS:
+        text = " ".join(words[:_MAX_SECTION_WORDS]) + "\n[truncated]"
+    return text.strip()
 
 
 _HEADING_PATTERN = re.compile(

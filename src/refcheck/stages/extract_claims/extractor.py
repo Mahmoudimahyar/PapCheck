@@ -1,4 +1,4 @@
-"""Claim extraction: LLM-powered extraction of claim-citation pairs."""
+"""DEPRECATED: Replaced by detect_citations pipeline (V4). Kept for backward compatibility."""
 
 import logging
 

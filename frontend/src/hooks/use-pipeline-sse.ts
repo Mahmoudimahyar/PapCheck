@@ -7,11 +7,12 @@ import type { PipelineEvent, StageStatus } from "@/lib/types";
 
 const INITIAL_STAGES: StageStatus[] = [
   { stage: 1, name: "Parse Manuscript", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
-  { stage: 2, name: "Extract Claims", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
+  { stage: 2, name: "Detect Citations", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
   { stage: 3, name: "Match PDFs", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
   { stage: 4, name: "Resolve Gaps", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
   { stage: 5, name: "Verify Claims", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
-  { stage: 6, name: "Generate Report", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
+  { stage: 6, name: "Missing Citations", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
+  { stage: 7, name: "Generate Report", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
 ];
 
 export function usePipelineSSE(sessionId: string) {

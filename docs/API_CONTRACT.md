@@ -51,10 +51,11 @@ Get session status and summary.
   "manuscript_filename": "my_paper.docx",
   "stages": {
     "parse": { "status": "complete", "elapsed_seconds": 12 },
+    "detect_citations": { "status": "complete", "elapsed_seconds": 5 },
     "match_pdfs": { "status": "complete", "elapsed_seconds": 8 },
     "resolve_gaps": { "status": "running", "progress": { "current": 34, "total": 95 } },
-    "extract_claims": { "status": "pending" },
     "verify_claims": { "status": "pending" },
+    "detect_missing_citations": { "status": "pending" },
     "generate_report": { "status": "pending" }
   },
   "summary": {
@@ -168,7 +169,7 @@ Get full detail for a single reference.
     "oa_url": "https://pmc.ncbi.nlm.nih.gov/...",
     "journal_url": "https://doi.org/10.1234/..."
   },
-  "claims": [
+  "claims": [  # Note: In V4, this is replaced by VerificationUnit from Stage 2 (detect_citations)
     {
       "id": 1,
       "manuscript_text": "Drug X reduced mortality by 30% [1]",
@@ -364,6 +365,19 @@ Regenerate report after user overrides.
 ---
 
 ## Implementation Notes
+
+### Pipeline Stages (V4)
+
+The pipeline now consists of 7 stages:
+1. **Parse DOCX** — Extract references and manuscript structure
+2. **Detect Citations** — Deterministic citation detection (replaces LLM-based claim extraction)
+3. **Match PDFs** — Match uploaded PDFs to references
+4. **Resolve Gaps** — Retrieve missing papers via academic APIs
+5. **Verify Claims** — LLM verification of citation-claim pairs
+6. **Detect Missing Citations** — Identify claims that should have citations but don't
+7. **Generate Report** — Create DOCX verification report
+
+**Note:** Stage 2 now uses `VerificationUnit` instead of `Claim`. The citation-first approach detects citations deterministically rather than using LLM extraction.
 
 ### FastAPI Router Structure
 

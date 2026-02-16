@@ -1,3 +1,7 @@
+> **Note:** This feature spec is superseded by Feature 08 (Citation-First Verification).
+> LLM-based claim extraction is replaced by deterministic citation detection in V4.
+> The atomic decomposition concept may still be applied to VerificationUnits in future versions.
+
 # Feature: Claim-Citation Pair Extraction
 
 **Module:** `src/refcheck/stages/extract_claims/`
