@@ -10,7 +10,6 @@ from refcheck.db.claim_repo import (
 )
 from refcheck.db.models import (
     ClaimDB,
-    PipelineEventDB,
     ReferenceDB,
     SessionDB,
     VerificationDB,

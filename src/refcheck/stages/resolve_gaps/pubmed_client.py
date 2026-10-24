@@ -7,10 +7,20 @@ from typing import Literal
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from refcheck.stages.resolve_gaps.http_retry import send_with_backoff
+from refcheck.stages.resolve_gaps.markup import (
+    parse_pubmed_abstract,
+    parse_pubmed_year,
+    split_pubmed_articles,
+    strip_markup,
+)
+from refcheck.stages.resolve_gaps.title_guard import pick_best_hit
+
 logger = logging.getLogger(__name__)
 
 PUBMED_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
 _TIMEOUT = 15.0
+_TITLE_CANDIDATES = 5
 
 
 class PubMedResult:
@@ -60,7 +70,10 @@ async def search_by_pmid(
         client = httpx.AsyncClient(timeout=_TIMEOUT)
 
     try:
-        resp = await client.get(f"{PUBMED_BASE}efetch.fcgi", params=params)
+        http = client
+        resp = await send_with_backoff(
+            lambda: http.get(f"{PUBMED_BASE}efetch.fcgi", params=params),
+        )
         resp.raise_for_status()
         return _parse_pubmed_xml(resp.text, pmid)
     except httpx.TimeoutException:
@@ -86,7 +99,8 @@ async def search_by_title(
     params: dict[str, str] = {
         "db": "pubmed",
         "term": f"{title}[Title]",
-        "retmax": "1",
+        # Several candidates: the top one is often an addendum/erratum.
+        "retmax": str(_TITLE_CANDIDATES),
         "retmode": "json",
     }
     if api_key:
@@ -97,13 +111,18 @@ async def search_by_title(
         client = httpx.AsyncClient(timeout=_TIMEOUT)
 
     try:
-        resp = await client.get(f"{PUBMED_BASE}esearch.fcgi", params=params)
+        http = client
+        resp = await send_with_backoff(
+            lambda: http.get(f"{PUBMED_BASE}esearch.fcgi", params=params),
+        )
         resp.raise_for_status()
         data = resp.json()
         id_list = data.get("esearchresult", {}).get("idlist", [])
         if not id_list:
             return PubMedResult(found=False, status="not_found")
-        return await search_by_pmid(id_list[0], client)
+        if len(id_list) == 1:
+            return await search_by_pmid(id_list[0], client)
+        return await _best_candidate(title, id_list, http)
     except httpx.TimeoutException:
         logger.warning("PubMed title search timeout")
         return PubMedResult(found=False, status="api_error")
@@ -114,25 +133,45 @@ async def search_by_title(
             await client.aclose()
 
 
+async def _best_candidate(
+    title: str, pmids: list[str], client: httpx.AsyncClient,
+) -> PubMedResult:
+    """efetch all candidates in one request; keep the best title match."""
+    params = {"db": "pubmed", "id": ",".join(pmids), "retmode": "xml"}
+    api_key = os.environ.get("NCBI_API_KEY", "")
+    if api_key:
+        params["api_key"] = api_key
+    resp = await send_with_backoff(
+        lambda: client.get(f"{PUBMED_BASE}efetch.fcgi", params=params),
+    )
+    resp.raise_for_status()
+    articles = split_pubmed_articles(resp.text)
+    candidates = [
+        _parse_pubmed_xml(articles[p], p) for p in pmids if p in articles
+    ]
+    best = pick_best_hit(title, [c for c in candidates if c.found], lambda c: c.title)
+    return best or PubMedResult(found=False, status="not_found")
+
+
 def _parse_pubmed_xml(xml_text: str, pmid: str) -> PubMedResult:
     """Parse PubMed eFetch XML response (minimal extraction)."""
-    # Simplified XML parsing — extract key fields
-    title = _extract_xml_tag(xml_text, "ArticleTitle")
-    year_str = _extract_xml_tag(xml_text, "Year")
+    # Simplified XML parsing — extract key fields. Year comes from PubDate:
+    # the first <Year> in the record is DateCompleted/DateRevised.
+    title = strip_markup(_extract_xml_tag(xml_text, "ArticleTitle"))
     doi = _extract_xml_tag(xml_text, "ArticleId IdType=\"doi\"")
     pmc_id = _extract_xml_tag(xml_text, "ArticleId IdType=\"pmc\"")
 
     if not title:
         return PubMedResult(found=False, pmid=pmid, status="not_found")
 
-    year = int(year_str) if year_str and year_str.isdigit() else None
     return PubMedResult(
         found=True,
         pmid=pmid,
         title=title,
-        year=year,
+        year=parse_pubmed_year(xml_text),
         doi=doi,
         pmc_id=pmc_id,
+        abstract=parse_pubmed_abstract(xml_text),
         status="found",
     )
 

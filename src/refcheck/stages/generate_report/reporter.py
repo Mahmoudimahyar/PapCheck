@@ -11,14 +11,20 @@ from docx.shared import Pt, RGBColor
 from refcheck.models.pipeline import PipelineState
 from refcheck.models.reference import Reference
 from refcheck.stages.generate_report.cost_section import add_cost_section
+from refcheck.stages.generate_report.partial_sections import (
+    add_partial_findings,
+    add_supported_with_note,
+)
 from refcheck.stages.generate_report.report_sections import (
+    add_check_first_findings,
     add_critical_findings,
     add_executive_summary,
     add_methodology_note,
-    add_minor_issues,
     add_retraction_section,
     add_verified_section,
 )
+from refcheck.stages.generate_report.source_issues import collect_source_issues
+from refcheck.stages.generate_report.source_issues_section import add_source_issues_section
 
 if TYPE_CHECKING:
     from docx.document import Document as DocxDocument
@@ -32,22 +38,27 @@ _AMBER = RGBColor(0xD9, 0x77, 0x06)
 _GRAY = RGBColor(0x9C, 0xA3, 0xAF)
 
 
-def generate_report(state: PipelineState, output_path: Path) -> Path:
-    """Generate a DOCX report from pipeline state (MVP + V1 sections)."""
+def generate_report(state: PipelineState, output_path: Path,
+                    degraded: list[str] | None = None) -> Path:
+    """Generate a DOCX report; ``degraded`` = one sentence per LLM role that ran degraded."""
     doc = docx.Document()
     has_verifications = bool(state.verification_results)
 
     _add_title(doc, state, has_verifications)
     _add_summary(doc, state)
     add_retraction_section(doc, state.references)
+    add_source_issues_section(doc, collect_source_issues(
+        state.references, state.claims, state.verification_results))
 
     # V1: Add verification sections if available
     if has_verifications:
         claims_by_id = {c.id: c for c in state.claims}
         add_executive_summary(doc, state.verification_results)
         add_critical_findings(doc, state.verification_results, claims_by_id)
-        add_minor_issues(doc, state.verification_results, claims_by_id)
+        add_check_first_findings(doc, state.verification_results, claims_by_id)
+        add_partial_findings(doc, state.verification_results, claims_by_id)
         add_verified_section(doc, state.verification_results)
+        add_supported_with_note(doc, state.verification_results, claims_by_id)
 
     _add_reference_table(doc, state.references, has_verifications)
     _add_not_found_section(doc, state.references)
@@ -58,7 +69,7 @@ def generate_report(state: PipelineState, output_path: Path) -> Path:
 
     # V1: Methodology note
     if has_verifications:
-        add_methodology_note(doc, len(state.verification_results))
+        add_methodology_note(doc, len(state.verification_results), degraded)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(output_path))
@@ -133,6 +144,8 @@ def _add_reference_table(
 
 def _pdf_status_text(ref: Reference) -> str:
     """Human-readable PDF status for a reference."""
+    if ref.pdf_path and ref.identity_status == "mismatch":
+        return "wrong paper attached"
     if ref.pdf_path:
         return ref.pdf_source or "available"
     if ref.journal_url:

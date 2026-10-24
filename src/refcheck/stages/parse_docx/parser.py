@@ -15,6 +15,7 @@ from refcheck.stages.parse_docx.citation_detector import (
     detect_citation_style,
     find_citations_in_text,
 )
+from refcheck.stages.parse_docx.duplicate_detector import detect_duplicates
 from refcheck.stages.parse_docx.field_codes import detect_field_codes
 from refcheck.stages.parse_docx.reference_extractor import (
     is_reference_heading,
@@ -49,6 +50,9 @@ def parse_manuscript(docx_path: Path) -> ParsedManuscript:
     typed_doc: DocxDocument = doc  # type: ignore[assignment,unused-ignore]
     sections = _extract_sections(typed_doc, warnings)
     references = _extract_references(typed_doc, sections, warnings)
+    # Bibliography issue for the report: same DOI / same title+author+year twice
+    references, duplicate_warnings = detect_duplicates(references)
+    warnings.extend(duplicate_warnings)
     body_text = " ".join(s.text for s in sections)
     citation_style = detect_citation_style(body_text)
     has_field_codes = detect_field_codes(docx_path)

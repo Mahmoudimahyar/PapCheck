@@ -37,7 +37,7 @@ class PipelineEvent(BaseModel):
     status: Literal[
         "running", "complete", "error", "needs_input", "pipeline_complete"
     ] = "running"
-    progress: dict[str, int] | None = None
+    progress: dict[str, float] | None = None
     message: str = ""
     elapsed_seconds: float = 0.0
     intervention: dict[str, str | int] | None = None

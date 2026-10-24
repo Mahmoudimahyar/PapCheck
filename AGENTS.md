@@ -6,7 +6,7 @@ RefCheck AI verifies scientific manuscript references for biomedical research. I
 ## Tech Stack
 - **Backend:** Python 3.11+ / FastAPI / Pydantic / SQLModel (SQLite)
 - **Frontend:** Next.js 15 (App Router) / shadcn/ui / Tailwind CSS v4 / Recharts / TanStack Query
-- **LLM:** litellm (unified interface) → Claude Sonnet 4.5 primary, GPT-4o secondary
+- **LLM:** litellm via `refcheck.llm` with role-based models (V5.1 cascade): screen = OpenAI Decisions API `gpt-6-luna`, verifier = `claude-haiku-5-5`, confirm (cross-family check of negatives) = `gpt-6-luna`, judge (unusual positives only) = `claude-sonnet-5-5`, utility = `gpt-6-luna`, embedding = `text-embedding-3-small` (fallbacks + env overrides in `llm/model_registry.py` / `.env.example`; never hard-code a model id)
 - **PDF parsing:** PyMuPDF + GROBID (Docker sidecar)
 - **Academic APIs:** httpx (async) + CrossRef, PubMed/NCBI, Semantic Scholar, Unpaywall
 - **Matching:** rapidfuzz (fuzzy string matching)
@@ -91,7 +91,7 @@ docker compose up -d                                  # Start GROBID sidecar
 ## Architecture Decisions
 - Pipeline stages are independent — never import from each other
 - Models are the contract — Pydantic everywhere
-- LLM layer is isolated — no direct anthropic/openai imports, use litellm via `call_llm()`
+- LLM layer is isolated — no direct anthropic/openai/litellm imports outside `refcheck.llm`; use `call_llm(..., role=...)` / `decide()` / `embed()` and pick models by role, not by name
 - Prompts are separate files — Jinja2 templates in `src/refcheck/prompts/`
 - API layer is thin — validate → call service → return
 - Frontend and backend are separate packages in one monorepo

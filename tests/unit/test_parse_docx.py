@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-import pytest
-
 from refcheck.stages.parse_docx import parse_manuscript
 from tests.conftest import create_test_docx
 

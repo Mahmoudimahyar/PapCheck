@@ -9,6 +9,8 @@ import {
   regenerateReport,
   getReportUrl,
 } from "@/lib/api";
+import { SourceIssuesCard } from "@/components/refcheck/source-issues-card";
+import { ReportPartialPreview } from "@/components/refcheck/report-partial-preview";
 import type { ReportPreview as ReportPreviewType } from "@/lib/types";
 
 interface ReportPreviewProps {
@@ -16,16 +18,11 @@ interface ReportPreviewProps {
 }
 
 const VERDICT_COLORS: Record<string, string> = {
-  supported:
-    "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  partially_supported:
-    "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
-  not_supported:
-    "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  contradicted:
-    "bg-red-200 text-red-900 dark:bg-red-800 dark:text-red-100",
-  cannot_verify:
-    "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
+  supported: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  partially_supported: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
+  not_supported: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  contradicted: "bg-red-200 text-red-900 dark:bg-red-800 dark:text-red-100",
+  cannot_verify: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
 };
 
 export function ReportPreview({ sessionId }: ReportPreviewProps) {
@@ -107,7 +104,7 @@ export function ReportPreview({ sessionId }: ReportPreviewProps) {
       {preview.retracted.length > 0 && (
         <Card className="border-red-300 dark:border-red-800">
           <CardHeader className="pb-2">
-            <CardTitle className="text-red-600 text-base">
+            <CardTitle className="text-red-600 dark:text-red-400 text-base">
               Retracted or Corrected References
             </CardTitle>
           </CardHeader>
@@ -126,6 +123,8 @@ export function ReportPreview({ sessionId }: ReportPreviewProps) {
         </Card>
       )}
 
+      <SourceIssuesCard issues={preview.source_issues ?? []} hideRetracted />
+
       {/* Critical Findings */}
       {preview.critical_findings.length > 0 && (
         <Card>
@@ -140,34 +139,17 @@ export function ReportPreview({ sessionId }: ReportPreviewProps) {
                     {f.verdict?.replace("_", " ")}
                   </Badge>
                   <span className="font-medium">Claim {f.claim_id}</span>
+                  {f.disputed && <Badge variant="outline" className="text-[10px]">disputed</Badge>}
                 </div>
-                <p className="mt-1 text-muted-foreground">{f.claim}</p>
+                <p className="mt-1 text-muted-foreground">{f.cited_for ? `Cited for: ${f.cited_for}` : f.claim}</p>
               </div>
             ))}
           </CardContent>
         </Card>
       )}
 
-      {/* Minor Issues */}
-      {preview.minor_issues.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Minor Issues</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {preview.minor_issues.map((f, i) => (
-              <div key={i} className="p-2 border rounded text-sm">
-                <Badge className={VERDICT_COLORS.partially_supported}>
-                  Partially Supported
-                </Badge>
-                <span className="ml-2">
-                  Claim {f.claim_id}: {f.claim}
-                </span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      {/* Partially supported findings, grouped by V5.4 partial type */}
+      <ReportPartialPreview rows={preview.minor_issues} />
 
       {/* Actions */}
       <div className="flex gap-3 items-center">

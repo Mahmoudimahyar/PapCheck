@@ -1,47 +1,94 @@
-"""LLM response caching helpers."""
+"""Disk caches for LLM responses and embeddings (diskcache).
 
+Keys are SHA-256 hashes over everything that changes the answer (model,
+effort, prompts, schema). Cache failures never break a call.
+Env: ``REFCHECK_CACHE_DIR`` (default ~/.refcheck/cache),
+``REFCHECK_LLM_CACHE_TTL`` seconds (default 7 days).
+"""
+
+import hashlib
 import json
 import logging
-from typing import TypeVar
+import os
+import threading
+from array import array
+from pathlib import Path
 
-from pydantic import BaseModel
+import diskcache
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T", bound=BaseModel)
+_DEFAULT_TTL = 7 * 86400
+_lock = threading.Lock()
+_caches: dict[str, diskcache.Cache] = {}
 
 
-def check_llm_cache(
-    template: str,
-    variables: dict[str, str],
-    model: str,
-    output_model: type[T],
-) -> T | None:
-    """Check the LLM cache for a matching response."""
+def _cache(name: str) -> diskcache.Cache:
+    root = Path(os.environ.get("REFCHECK_CACHE_DIR", str(Path.home() / ".refcheck" / "cache")))
+    path = str(root / name)
+    with _lock:
+        cache = _caches.get(path)
+        if cache is None:
+            Path(path).mkdir(parents=True, exist_ok=True)
+            cache = diskcache.Cache(path)
+            _caches[path] = cache
+    return cache
+
+
+def _ttl() -> int:
     try:
-        from refcheck.utils.cache import get_cached_llm_response
+        return int(os.environ.get("REFCHECK_LLM_CACHE_TTL", _DEFAULT_TTL))
+    except ValueError:
+        return _DEFAULT_TTL
 
-        cached_json = get_cached_llm_response(template, variables, model)
-        if cached_json is None:
-            return None
-        parsed = json.loads(cached_json)
-        result = output_model.model_validate(parsed)
-        logger.info("LLM cache HIT: template=%s", template)
-        return result
-    except Exception:
+
+def make_key(namespace: str, parts: dict[str, object]) -> str:
+    """Deterministic key for a namespace and a JSON-able description."""
+    blob = json.dumps(parts, sort_keys=True, default=str, ensure_ascii=False)
+    return f"{namespace}:{hashlib.sha256(blob.encode()).hexdigest()}"
+
+
+def get_text(key: str) -> str | None:
+    """Cached LLM response text, or None."""
+    try:
+        value = _cache("llm_v5").get(key)
+    except Exception as exc:  # noqa: BLE001 - cache must never break a call
+        logger.debug("LLM cache read failed: %s", exc)
         return None
+    return value if isinstance(value, str) else None
 
 
-def store_llm_cache(
-    template: str,
-    variables: dict[str, str],
-    model: str,
-    response_json: str,
-) -> None:
-    """Store a valid LLM response in the cache."""
+def set_text(key: str, value: str) -> None:
+    """Store an LLM response text."""
     try:
-        from refcheck.utils.cache import cache_llm_response
+        _cache("llm_v5").set(key, value, expire=_ttl())
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("LLM cache write failed: %s", exc)
 
-        cache_llm_response(template, variables, model, response_json)
-    except Exception:
-        logger.debug("Failed to cache LLM response", exc_info=True)
+
+def get_vector(key: str) -> list[float] | None:
+    """Cached embedding vector, or None."""
+    try:
+        value = _cache("embeddings").get(key)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Embedding cache read failed: %s", exc)
+        return None
+    if isinstance(value, bytes) and value:
+        return array("f", value).tolist()
+    return None
+
+
+def set_vector(key: str, vector: list[float]) -> None:
+    """Store an embedding vector as float32 bytes (no TTL)."""
+    try:
+        _cache("embeddings").set(key, array("f", vector).tobytes())
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Embedding cache write failed: %s", exc)
+
+
+def close_caches() -> None:
+    """Close open cache handles (tests / shutdown)."""
+    with _lock:
+        for cache in _caches.values():
+            cache.close()
+        _caches.clear()

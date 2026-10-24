@@ -27,7 +27,6 @@ from refcheck.models.verification import (
     VerificationResult,
 )
 
-
 # --- Reference models ---
 
 

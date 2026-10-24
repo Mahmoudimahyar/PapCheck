@@ -23,6 +23,7 @@ from refcheck.db.session_repo import update_session as db_update_session
 from refcheck.models.pipeline import PipelineState
 from refcheck.models.reference import ParsedManuscript
 from refcheck.stages.generate_report import generate_report as generate_report_fn
+from refcheck.stages.generate_report.source_issues import SourceIssue, collect_source_issues
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ class ReportPreview(BaseModel):
     critical_findings: list[dict[str, str]] = Field(default_factory=list)
     minor_issues: list[dict[str, str]] = Field(default_factory=list)
     retracted: list[dict[str, str]] = Field(default_factory=list)
+    source_issues: list[SourceIssue] = Field(default_factory=list)
     overrides_count: int = 0
     generated_at: str = ""
 
@@ -133,6 +135,7 @@ async def get_report_preview(
     return ReportPreview(
         summary=counts, critical_findings=critical,
         minor_issues=minor, retracted=retracted,
+        source_issues=collect_source_issues(refs, claims, verifications),
         overrides_count=overrides,
         generated_at=datetime.now(UTC).isoformat(),
     )
@@ -160,7 +163,7 @@ async def get_report_diff(
             changes.append({
                 "claim_id": str(v.claim_id),
                 "claim": claim.extracted_claim if claim else "",
-                "original_verdict": v.verdict,
+                "original_verdict": v.original_verdict or v.verdict,
                 "new_verdict": v.verdict,
                 "reason": v.user_override_reason,
             })

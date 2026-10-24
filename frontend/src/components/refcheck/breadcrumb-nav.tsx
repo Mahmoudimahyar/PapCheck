@@ -20,7 +20,7 @@ export function BreadcrumbNav({ sessionId, current }: BreadcrumbNavProps) {
   const base = `/verify/${sessionId}`;
 
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-sm text-muted-foreground mb-4">
+    <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground mb-4">
       <Link href="/" className="hover:text-foreground transition-colors">
         Upload
       </Link>

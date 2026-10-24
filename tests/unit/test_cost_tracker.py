@@ -3,20 +3,18 @@
 import pytest
 
 from refcheck.llm.cost_tracker import CostLimitExceededError, CostTracker
-from refcheck.llm.model_registry import ModelConfig
+from refcheck.llm.model_spec import ModelSpec
+from refcheck.llm.usage import TokenUsage
 
 
 def _make_model(
     name: str = "Test Model",
     input_cost: float = 1.0,
     output_cost: float = 2.0,
-    tier: int = 0,
-) -> ModelConfig:
-    return ModelConfig(
-        alias="test", name=name, abbreviation="TM",
-        litellm_id="test/model", tier=tier,
+) -> ModelSpec:
+    return ModelSpec(
+        id=name, litellm_id="test/model", provider="test",
         input_cost_per_m=input_cost, output_cost_per_m=output_cost,
-        max_context=128_000, provider="test", env_key="TEST_KEY",
     )
 
 
@@ -80,17 +78,18 @@ class TestCostSummary:
         assert "Model A" in summary.by_model
         assert "Model B" in summary.by_model
 
-    def test_summary_by_tier(self) -> None:
+    def test_summary_by_role(self) -> None:
         tracker = CostTracker()
-        m0 = _make_model(tier=0)
-        m1 = _make_model(tier=1)
-        tracker.record(m0, 100, 100, "t0")
-        tracker.record(m0, 100, 100, "t0")
-        tracker.record(m1, 100, 100, "t1")
+        model = _make_model(input_cost=1.0, output_cost=1.0)
+        usage = TokenUsage(input_tokens=1000, output_tokens=1000)
+        tracker.record_usage(model, usage, "verify_judge", "judge")
+        tracker.record_usage(model, usage, "verify_judge", "judge")
+        tracker.record_usage(model, usage, "verify_verifier", "verifier", success=False)
 
         summary = tracker.summary()
-        assert summary.by_tier[0] == 2
-        assert summary.by_tier[1] == 1
+        assert summary.calls_by_role == {"judge": 2, "verifier": 1}
+        assert abs(summary.by_role["judge"] - 0.004) < 1e-9
+        assert summary.failed_calls == 1
 
     def test_summary_total_calls(self) -> None:
         tracker = CostTracker()

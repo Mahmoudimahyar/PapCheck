@@ -1,5 +1,6 @@
 """Unit tests for gap resolution (all API calls mocked)."""
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -7,6 +8,28 @@ import pytest
 
 from refcheck.models.reference import Reference
 from refcheck.stages.resolve_gaps.resolver import resolve_gaps
+
+_LK = "refcheck.stages.resolve_gaps.lookups."
+_RS = "refcheck.stages.resolve_gaps.resolver."
+
+
+@pytest.fixture(autouse=True)
+def _no_enrichment() -> Iterator[None]:
+    """Abstract/retraction enrichment is tested in test_resolve_enrichment."""
+
+    async def _passthrough(
+        refs: list[Reference], client: httpx.AsyncClient,
+    ) -> list[Reference]:
+        return refs
+
+    with patch(
+        "refcheck.stages.resolve_gaps.resolver.enrich_references",
+        side_effect=_passthrough,
+    ), patch(  # free-full-text hints are tested in test_oa_hints
+        "refcheck.stages.resolve_gaps.resolver.add_access_hints",
+        AsyncMock(side_effect=lambda refs, _client, _gate=None: refs),
+    ):
+        yield
 
 
 def _make_ref(
@@ -76,13 +99,13 @@ class TestResolveGaps:
         )
 
         with (
-            patch("refcheck.stages.resolve_gaps.resolver.pubmed_by_pmid", _mock_pubmed_not_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.pubmed_by_title", _mock_pubmed_not_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.crossref_by_doi", cr_mock),
-            patch("refcheck.stages.resolve_gaps.resolver.crossref_by_title", _mock_crossref_not_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.s2_by_title", _mock_s2_not_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.download_pmc_pdf", AsyncMock(return_value=None)),
-            patch("refcheck.stages.resolve_gaps.resolver.download_unpaywall_pdf", AsyncMock(return_value=None)),
+            patch(_LK + "pubmed_by_pmid", _mock_pubmed_not_found()),
+            patch(_LK + "pubmed_by_title", _mock_pubmed_not_found()),
+            patch(_LK + "crossref_by_doi", cr_mock),
+            patch(_LK + "crossref_by_title", _mock_crossref_not_found()),
+            patch(_LK + "s2_by_title", _mock_s2_not_found()),
+            patch(_RS + "download_pmc_pdf", AsyncMock(return_value=None)),
+            patch(_RS + "download_unpaywall_pdf", AsyncMock(return_value=None)),
         ):
             result = await resolve_gaps([ref])
             assert len(result) == 1
@@ -94,13 +117,13 @@ class TestResolveGaps:
         ref = _make_ref(1, pmid="12345678", title="Test")
 
         with (
-            patch("refcheck.stages.resolve_gaps.resolver.pubmed_by_pmid", _mock_pubmed_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.pubmed_by_title", _mock_pubmed_not_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.crossref_by_doi", _mock_crossref_not_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.crossref_by_title", _mock_crossref_not_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.s2_by_title", _mock_s2_not_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.download_pmc_pdf", AsyncMock(return_value=None)),
-            patch("refcheck.stages.resolve_gaps.resolver.download_unpaywall_pdf", AsyncMock(return_value=None)),
+            patch(_LK + "pubmed_by_pmid", _mock_pubmed_found()),
+            patch(_LK + "pubmed_by_title", _mock_pubmed_not_found()),
+            patch(_LK + "crossref_by_doi", _mock_crossref_not_found()),
+            patch(_LK + "crossref_by_title", _mock_crossref_not_found()),
+            patch(_LK + "s2_by_title", _mock_s2_not_found()),
+            patch(_RS + "download_pmc_pdf", AsyncMock(return_value=None)),
+            patch(_RS + "download_unpaywall_pdf", AsyncMock(return_value=None)),
         ):
             result = await resolve_gaps([ref])
             assert result[0].source_status == "found"
@@ -111,11 +134,11 @@ class TestResolveGaps:
         ref = _make_ref(1, title="Completely Fabricated Paper That Does Not Exist")
 
         with (
-            patch("refcheck.stages.resolve_gaps.resolver.pubmed_by_pmid", _mock_pubmed_not_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.pubmed_by_title", _mock_pubmed_not_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.crossref_by_doi", _mock_crossref_not_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.crossref_by_title", _mock_crossref_not_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.s2_by_title", _mock_s2_not_found()),
+            patch(_LK + "pubmed_by_pmid", _mock_pubmed_not_found()),
+            patch(_LK + "pubmed_by_title", _mock_pubmed_not_found()),
+            patch(_LK + "crossref_by_doi", _mock_crossref_not_found()),
+            patch(_LK + "crossref_by_title", _mock_crossref_not_found()),
+            patch(_LK + "s2_by_title", _mock_s2_not_found()),
         ):
             result = await resolve_gaps([ref])
             assert result[0].source_status == "not_found"
@@ -126,11 +149,11 @@ class TestResolveGaps:
         ref = _make_ref(1, title="Test Paper")
 
         with (
-            patch("refcheck.stages.resolve_gaps.resolver.pubmed_by_pmid", _mock_pubmed_error()),
-            patch("refcheck.stages.resolve_gaps.resolver.pubmed_by_title", _mock_pubmed_error()),
-            patch("refcheck.stages.resolve_gaps.resolver.crossref_by_doi", _mock_crossref_not_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.crossref_by_title", _mock_crossref_not_found()),
-            patch("refcheck.stages.resolve_gaps.resolver.s2_by_title", _mock_s2_not_found()),
+            patch(_LK + "pubmed_by_pmid", _mock_pubmed_error()),
+            patch(_LK + "pubmed_by_title", _mock_pubmed_error()),
+            patch(_LK + "crossref_by_doi", _mock_crossref_not_found()),
+            patch(_LK + "crossref_by_title", _mock_crossref_not_found()),
+            patch(_LK + "s2_by_title", _mock_s2_not_found()),
         ):
             result = await resolve_gaps([ref])
             assert result[0].source_status == "api_error"

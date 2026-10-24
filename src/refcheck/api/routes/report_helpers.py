@@ -3,6 +3,31 @@
 from refcheck.models.claim import Claim
 from refcheck.models.reference import Reference
 from refcheck.models.verification import VerificationResult
+from refcheck.stages.generate_report.claim_signals import narrowed_cited_for
+from refcheck.stages.generate_report.partial_findings import (
+    action_of,
+    elements_of,
+    partial_type_of,
+    severity_of,
+    type_label,
+)
+from refcheck.stages.generate_report.result_signals import check_first
+
+
+def _finding(v: VerificationResult, claim: Claim | None) -> dict[str, str]:
+    """Preview row: the claim, the clause this reference is cited for, dispute flag,
+    and the V5.4 partial sub-type with what the author should do."""
+    return {
+        "claim_id": str(v.claim_id), "reference_id": str(v.reference_id),
+        "verdict": v.verdict, "claim": claim.extracted_claim if claim else "",
+        "cited_for": narrowed_cited_for(claim) if claim else "",
+        "disputed": "yes" if v.consensus_type == "disputed" else "",
+        "check_first": "yes" if check_first(v) else "",
+        "reasoning": v.reasoning,
+        "partial_type": partial_type_of(v) or "", "partial_label": type_label(partial_type_of(v)),
+        "partial_severity": severity_of(v) or "", "author_action": action_of(v),
+        "unsupported_elements": "; ".join(elements_of(v)),
+    }
 
 
 def build_counts(verifications: list[VerificationResult]) -> dict[str, int]:
@@ -23,34 +48,18 @@ def collect_critical(
     claims_by_id: dict[int, Claim],
 ) -> list[dict[str, str]]:
     """Collect critical findings (contradicted / not_supported)."""
-    critical: list[dict[str, str]] = []
-    for v in verifications:
-        if v.verdict in ("not_supported", "contradicted"):
-            claim = claims_by_id.get(v.claim_id)
-            critical.append({
-                "claim_id": str(v.claim_id), "verdict": v.verdict,
-                "claim": claim.extracted_claim if claim else "",
-                "reasoning": v.reasoning,
-            })
-    return critical
+    return [_finding(v, claims_by_id.get(v.claim_id)) for v in verifications
+            if v.verdict in ("not_supported", "contradicted")]
 
 
 def collect_minor(
     verifications: list[VerificationResult],
     claims_by_id: dict[int, Claim],
 ) -> list[dict[str, str]]:
-    """Collect minor issues (partially_supported)."""
-    return [
-        {
-            "claim_id": str(v.claim_id), "verdict": v.verdict,
-            "claim": (
-                claims_by_id[v.claim_id].extracted_claim
-                if v.claim_id in claims_by_id else ""
-            ),
-        }
-        for v in verifications
-        if v.verdict == "partially_supported"
-    ]
+    """Collect minor issues (partially_supported); check-first ones lead the list."""
+    partial = sorted((v for v in verifications if v.verdict == "partially_supported"),
+                     key=lambda v: not check_first(v))
+    return [_finding(v, claims_by_id.get(v.claim_id)) for v in partial]
 
 
 def collect_retracted(refs: list[Reference]) -> list[dict[str, str]]:

@@ -1,152 +1,144 @@
-"""Unified LLM call wrapper using litellm.
+"""Unified LLM call wrapper: template -> role/model -> validated Pydantic.
 
-Uses synchronous litellm.completion() in a thread pool to avoid
-Windows event-loop issues with litellm's async httpx client.
+``call_llm`` returns the parsed model; ``call_llm_raw`` also returns usage,
+cost, latency and the model that actually answered. Without an explicit
+``model`` the role's first available model is used and hard failures
+(billing/auth/404) or exhausted retries fall back to the next candidate.
+V5.8: a degraded fallback (model_registry.DEGRADED_FALLBACKS) is recorded on the
+tracker and its spend is capped (degraded_guard), so an outage cannot run up cost.
 """
 
-import json
 import logging
-import os
-import traceback
+import time
+from collections.abc import Mapping
 from typing import TypeVar
 
-import litellm
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
-from refcheck.llm.cache import check_llm_cache, store_llm_cache
-from refcheck.llm.json_extractor import extract_json_from_response
-from refcheck.llm.key_manager import rotate_anthropic_key
-from refcheck.llm.rate_limiter import call_with_rate_limit_retry
+from refcheck.llm.cost_tracker import CostTracker
+from refcheck.llm.degraded_guard import fallback_allowed, guard_degraded, release_degraded
+from refcheck.llm.errors import (
+    LLMCallError,
+    LLMError,
+    LLMResponseInvalidError,
+    NoModelAvailableError,
+)
+from refcheck.llm.model_lookup import spec_for
+from refcheck.llm.retry import deadline_from
+from refcheck.llm.roles import mark_unavailable, resolve_role, role_candidates, role_effort
+from refcheck.llm.structured import LLMCallResult, call_spec, parse_output
 from refcheck.llm.templates import render_template
+from refcheck.llm.types import Role
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "LLMCallResult", "LLMResponseInvalidError", "call_llm", "call_llm_raw", "parse_output",
+]
+
 T = TypeVar("T", bound=BaseModel)
 
-_DEFAULT_MODEL = "anthropic/claude-sonnet-4-5-20250929"
-_DEFAULT_TIMEOUT = 120
+_FALLBACK_KINDS = frozenset({
+    "rate_limit", "transient", "timeout", "refusal", "content_filter",
+    "invalid_output", "context_window",
+})
+# A refusal/content filter is usually a provider-side classifier decision, so
+# the next attempt skips every candidate of the same model family.
+_FAMILY_SKIP_KINDS = frozenset({"refusal", "content_filter"})
 
 
-def _is_billing_error(exc: Exception) -> bool:
-    """Check if an exception is a billing/credit exhaustion error."""
-    msg = str(exc).lower()
-    return "credit balance" in msg or "billing" in msg
+def _expired(deadline: float | None) -> bool:
+    return deadline is not None and time.monotonic() >= deadline - 1.0
 
 
-def _sync_completion(
-    model: str,
-    messages: list[dict[str, str]],
-) -> str:
-    """Run litellm.completion synchronously (called via thread pool).
+async def call_llm_raw(
+    template: str,
+    variables: Mapping[str, object],
+    output_model: type[T],
+    model: str | None = None,
+    role: Role | None = "utility",
+    max_retries: int = 1,
+    use_cache: bool = True,
+    cost_tracker: CostTracker | None = None,
+    task: str = "llm",
+    max_output_tokens: int | None = None,
+    *,
+    system_template: str | None = None,
+    system_variables: Mapping[str, object] | None = None,
+    timeout: float | None = None,
+) -> LLMCallResult[T]:
+    """Render ``template`` and call the role's model (or ``model``).
 
-    On billing/credit errors, rotates to the backup Anthropic API key
-    and retries once automatically.
+    ``system_template`` renders a stable, cache-marked system prefix; a
+    ``CACHE_BREAKPOINT`` line inside ``template`` marks a cacheable user
+    prefix. ``timeout`` is the wall-clock budget for the whole call
+    including retries/fallbacks. Raises LLMCallError, LLMResponseInvalidError
+    (incl. LLMRefusalError), NoModelAvailableError or CostLimitExceededError.
     """
-    try:
-        return _do_completion(model, messages)
-    except Exception as exc:
-        if _is_billing_error(exc) and "anthropic" in model.lower():
-            new_key = rotate_anthropic_key()
-            if new_key:
-                logger.warning(
-                    "Anthropic credit exhausted, rotating to backup key",
-                )
-                os.environ["ANTHROPIC_API_KEY"] = new_key
-                return _do_completion(model, messages)
-        raise
+    user_text = render_template(template, dict(variables))
+    system_text = (render_template(system_template, dict(system_variables or {}))
+                   if system_template else None)
+    deadline = deadline_from(timeout)
+    args = (user_text, system_text, output_model, role, max_retries, use_cache,
+            cost_tracker, task, max_output_tokens, deadline)
+    if model is not None:
+        spec = spec_for(model).with_effort(role_effort(role) if role else None)
+        reserved = guard_degraded(role, spec, cost_tracker, None) if role is not None else 0.0
+        try:
+            return await call_spec(spec, *args)
+        finally:
+            release_degraded(role, cost_tracker, reserved)
 
-
-def _do_completion(
-    model: str,
-    messages: list[dict[str, str]],
-) -> str:
-    """Execute a single litellm.completion call."""
-    response = litellm.completion(
-        model=model,
-        messages=messages,
-        response_format={"type": "json_object"},
-        temperature=0.1,
-        timeout=_DEFAULT_TIMEOUT,
-    )
-    content: str | None = response.choices[0].message.content
-    if not content:
-        raise ValueError("Empty LLM response")
-    result = str(content)
-    logger.info("LLM raw len=%d first_50=%r", len(result), result[:50])
-    return result
+    wanted: Role = role or "utility"
+    tried: list[str] = []
+    last_error: LLMError | None = None
+    while True:
+        spec_or_none = resolve_role(wanted, exclude=tried)
+        if spec_or_none is not None and not fallback_allowed(wanted, spec_or_none):
+            spec_or_none = None  # a refusal / bad answer is not an outage: no degraded model
+        if spec_or_none is None:
+            if last_error is not None:
+                raise last_error  # every candidate failed: surface the real cause
+            raise NoModelAvailableError(f"no available model for role '{wanted}'")
+        reserved = guard_degraded(wanted, spec_or_none, cost_tracker, last_error)
+        try:
+            return await call_spec(spec_or_none, *args)
+        except (LLMCallError, LLMResponseInvalidError) as exc:
+            if exc.is_hard:
+                mark_unavailable(spec_or_none.id, f"{exc.kind}: {exc}")
+            elif exc.kind not in _FALLBACK_KINDS or _expired(deadline):
+                raise
+            tried.append(spec_or_none.id)
+            if exc.kind in _FAMILY_SKIP_KINDS:
+                family = spec_or_none.family
+                tried.extend(c.id for c in role_candidates(wanted) if c.family == family)
+            last_error = exc
+            logger.warning("Role %s: %s failed (%s); trying next model", wanted,
+                           spec_or_none.id, exc.kind)
+        finally:
+            release_degraded(wanted, cost_tracker, reserved)
 
 
 async def call_llm(
     template: str,
-    variables: dict[str, str],
+    variables: Mapping[str, object],
     output_model: type[T],
-    model: str = _DEFAULT_MODEL,
+    model: str | None = None,
+    role: Role | None = "utility",
     max_retries: int = 1,
     use_cache: bool = True,
+    cost_tracker: CostTracker | None = None,
+    task: str = "llm",
+    max_output_tokens: int | None = None,
+    *,
+    system_template: str | None = None,
+    system_variables: Mapping[str, object] | None = None,
+    timeout: float | None = None,
 ) -> T:
-    """Call LLM with rendered prompt, validate output via Pydantic.
-
-    V4: Robust JSON extraction. Handles code fences, surrounding
-    text, partial JSON. Caches valid responses. Retries on parse
-    failures and rate limits with exponential backoff.
-    """
-    if use_cache:
-        cached = check_llm_cache(template, variables, model, output_model)
-        if cached is not None:
-            return cached
-
-    prompt_text = render_template(template, variables)
-    messages: list[dict[str, str]] = [
-        {"role": "user", "content": prompt_text},
-    ]
-
-    last_error: Exception | None = None
-    for attempt in range(max_retries + 1):
-        raw_content = ""
-        try:
-            raw_content = await call_with_rate_limit_retry(
-                _sync_completion, model, messages,
-            )
-            content = extract_json_from_response(raw_content)
-            if not content:
-                raise ValueError("Empty response after extraction")
-            parsed = json.loads(content)
-            result = output_model.model_validate(parsed)
-            logger.info(
-                "LLM OK: template=%s attempt=%d", template, attempt + 1,
-            )
-            if use_cache:
-                store_llm_cache(template, variables, model, content)
-            return result
-
-        except (json.JSONDecodeError, ValidationError, ValueError) as exc:
-            last_error = exc
-            preview = raw_content[:500] if raw_content else "<empty>"
-            logger.warning(
-                "LLM parse error (%d/%d): %s: %s | raw: %s",
-                attempt + 1, max_retries + 1,
-                type(exc).__name__, exc, preview,
-            )
-            if attempt < max_retries:
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        f"Your response was invalid: {exc}. "
-                        "Return ONLY raw JSON, no markdown."
-                    ),
-                })
-        except Exception as exc:
-            logger.error(
-                "LLM call error (%d/%d): %s: %s\n%s",
-                attempt + 1, max_retries + 1,
-                type(exc).__name__, exc, traceback.format_exc(),
-            )
-            raise
-
-    raise LLMResponseInvalidError(
-        f"Failed after {max_retries + 1} attempts: {last_error}"
+    """Like call_llm_raw but returns only the validated Pydantic object."""
+    result = await call_llm_raw(
+        template, variables, output_model, model, role, max_retries, use_cache,
+        cost_tracker, task, max_output_tokens, system_template=system_template,
+        system_variables=system_variables, timeout=timeout,
     )
-
-
-class LLMResponseInvalidError(Exception):
-    """LLM returned unparseable or schema-invalid output."""
+    return result.parsed

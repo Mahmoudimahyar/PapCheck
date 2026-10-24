@@ -3,7 +3,7 @@ Prompt: atomic_decomposition
 Purpose: Break a factual or contrast claim into independently verifiable atoms
 Input variables: claim, claim_type
 Output schema: AtomicDecompositionResponse
-Model: claude-sonnet-4-5-20250929
+Role: utility (model resolved by refcheck.llm roles; never hard-coded)
 -->
 
 # System Instructions

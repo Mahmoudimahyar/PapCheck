@@ -52,6 +52,9 @@ async def update_claim(
     updates: dict[str, object] = {}
     if body.extracted_claim is not None:
         updates["extracted_claim"] = body.extracted_claim
+        # The edited text is what this reference must support now; a clause
+        # narrowed from the old text would otherwise still be what is verified.
+        updates["cited_for"] = body.extracted_claim
     if body.claim_type is not None:
         updates["claim_type"] = body.claim_type
     if body.priority is not None:

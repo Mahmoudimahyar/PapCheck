@@ -26,6 +26,29 @@ PDFS_DIR = FIXTURES_DIR / "pdfs"
 import refcheck.db.models  # noqa: F401, E402
 
 
+@pytest.fixture(autouse=True)
+def _adjudicator_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The element adjudicator is off unless a test turns it on.
+
+    .env (loaded above) may hold real keys: a cascade test that routes a partial
+    verdict must never reach a paid adjudicator call by accident. The adjudicator's
+    own tests set REFCHECK_ADJUDICATE=on and patch its call.
+    """
+    monkeypatch.setenv("REFCHECK_ADJUDICATE", "off")
+
+
+@pytest.fixture(autouse=True)
+def _default_clearance(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests run the default (V5.5) verifier clearance unless they request ``strict``."""
+    monkeypatch.delenv("REFCHECK_STRICT_CLEARANCE", raising=False)
+
+
+@pytest.fixture
+def strict(monkeypatch: pytest.MonkeyPatch) -> None:
+    """REFCHECK_STRICT_CLEARANCE=on: V5.6 strict prompts, schema and dismissal audit."""
+    monkeypatch.setenv("REFCHECK_STRICT_CLEARANCE", "on")
+
+
 @pytest.fixture
 def test_engine():
     """Create an in-memory SQLite engine with all tables."""

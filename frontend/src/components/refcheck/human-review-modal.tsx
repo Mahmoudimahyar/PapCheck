@@ -11,6 +11,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmationBadge, ScreenRisk } from "@/components/refcheck/decided-by-badge";
+import { CitedFor, ClaimWarnings, DisputePanel, ResultNotes } from "@/components/refcheck/result-signals";
+import { GuardNotes, PartialFinding } from "@/components/refcheck/partial-finding";
+import { DECIDED_BY_LABELS } from "@/lib/cascade";
 import type { VerificationResult, Verdict } from "@/lib/types";
 
 interface HumanReviewModalProps {
@@ -24,18 +28,18 @@ interface HumanReviewModalProps {
 }
 
 const VERDICT_OPTIONS: { value: Verdict; label: string; color: string }[] = [
-  { value: "supported", label: "Supported", color: "text-green-600" },
+  { value: "supported", label: "Supported", color: "text-green-700 dark:text-green-400" },
   {
     value: "partially_supported",
     label: "Partially Supported",
-    color: "text-amber-600",
+    color: "text-amber-700 dark:text-amber-400",
   },
-  { value: "not_supported", label: "Not Supported", color: "text-red-600" },
-  { value: "contradicted", label: "Contradicted", color: "text-red-700" },
+  { value: "not_supported", label: "Not Supported", color: "text-red-700 dark:text-red-400" },
+  { value: "contradicted", label: "Contradicted", color: "text-red-800 dark:text-red-300" },
   {
     value: "cannot_verify",
     label: "I'll Check Manually",
-    color: "text-gray-500",
+    color: "text-gray-600 dark:text-gray-400",
   },
 ];
 
@@ -63,7 +67,7 @@ export function HumanReviewModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>Review Verification Result</DialogTitle>
           <p className="text-sm text-muted-foreground">
@@ -81,6 +85,9 @@ export function HumanReviewModal({
               {result.claim.manuscript_text || result.claim.extracted_claim}
             </p>
           </div>
+          <CitedFor citedFor={result.claim.cited_for} />
+          <ClaimWarnings claim={result.claim} signals={result.signals} />
+          <PartialFinding verdict={result.verdict} fields={result} />
 
           {/* Evidence Quotes */}
           {result.evidence_quotes.length > 0 && (
@@ -103,13 +110,24 @@ export function HumanReviewModal({
 
           {/* Reasoning */}
           <div>
-            <Label className="text-xs font-medium text-muted-foreground">
-              AI Reasoning (Tier {result.tier})
-            </Label>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Label className="text-xs font-medium text-muted-foreground">
+                AI Reasoning (
+                {result.decided_by && result.decided_by !== "none"
+                  ? `decided by ${DECIDED_BY_LABELS[result.decided_by]}`
+                  : `Tier ${result.tier}`}
+                )
+              </Label>
+              <ConfirmationBadge status={result.confirmation} label={result.confirmation_label} compact />
+              <ScreenRisk pProblem={result.screen_p_problem} />
+            </div>
             <div className="text-sm mt-1 p-2 bg-muted rounded whitespace-pre-wrap max-h-40 overflow-y-auto">
               {result.reasoning}
             </div>
           </div>
+          <DisputePanel dispute={result.signals?.dispute} />
+          <ResultNotes signals={result.signals} />
+          <GuardNotes verdict={result.verdict} guards={result.guards_applied} />
 
           {/* Verdict Selection */}
           <div>

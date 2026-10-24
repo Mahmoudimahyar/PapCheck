@@ -18,6 +18,8 @@ class MatchResult(BaseModel):
         "grobid_structured",
         "llm_firstpage",
         "user_confirmed",
+        "rematch_doi",  # second pass: reference DOI printed on the PDF's first pages
+        "rematch_title",  # second pass: whole title on page 1 + author/year + identity
         "unmatched",
     ] = "unmatched"
     needs_user_confirmation: bool = False

@@ -2,6 +2,8 @@
 
 import re
 
+from refcheck.stages.parse_docx.apa_parser import parse_apa_reference
+
 # Pattern: single/double initials + surname, e.g. "A. Smith", "A.B. Smith-Jones"
 _AUTHOR_NAME = re.compile(
     r"^(?:[A-Z]\.[\-]?){1,4}\s+[A-Z][\w\-'\u00C0-\u024F]+"  # Initial. Surname
@@ -15,13 +17,18 @@ def parse_authors_title(text: str) -> tuple[list[str], str]:
     """Parse author list and title from a reference string.
 
     Handles Vancouver-style refs like:
-      [1] A. Courties, I. Kouki, Title of paper, Journal, Vol (Year).
+      [1] A. Lorne, I. Pell, Title of paper, Journal, Vol (Year).
       1. Author A, Author B. Title of paper. Journal. Year.
     """
     from refcheck.stages.parse_docx.reference_extractor import _NUMBERED_REF
 
     # Remove numbering prefix
     cleaned = _NUMBERED_REF.sub("", text).strip()
+
+    # Strategy 0: APA/Harvard "Authors (Year). Title. Journal Vol, pages."
+    apa = parse_apa_reference(cleaned)
+    if apa is not None:
+        return apa.authors, apa.title
 
     # Strategy 1: Comma-separated segments — detect where authors end
     segments = re.split(r",\s*", cleaned)

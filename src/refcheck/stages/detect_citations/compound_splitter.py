@@ -3,6 +3,7 @@
 import re
 
 from refcheck.models.citation import CitationInstance
+from refcheck.stages.detect_citations.author_year_detector import looks_like_surname
 from refcheck.stages.detect_citations.numbered_detector import (
     expand_number_range,
 )
@@ -108,4 +109,4 @@ def _extract_group_authors(text: str) -> list[str]:
     auth_text = parts[0] if parts else text
     auth_text = re.sub(r"\s+et\s+al\.?", "", auth_text).strip()
     names = re.split(r"\s+(?:and|&)\s+|,\s*", auth_text)
-    return [n.strip() for n in names if n.strip() and n[0:1].isupper()]
+    return [n.strip() for n in names if looks_like_surname(n.strip())]

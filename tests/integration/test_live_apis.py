@@ -136,11 +136,11 @@ class TestUnpaywallLive:
         if not email:
             pytest.skip("UNPAYWALL_EMAIL not set")
 
-        from refcheck.stages.resolve_gaps.retriever import download_unpaywall_pdf
-
         # Use a known OA paper DOI (the CRISPR paper is OA)
         # We won't actually download — just check the function doesn't crash
         import tempfile
+
+        from refcheck.stages.resolve_gaps.retriever import download_unpaywall_pdf
 
         with tempfile.TemporaryDirectory() as tmp:
             result = await download_unpaywall_pdf(

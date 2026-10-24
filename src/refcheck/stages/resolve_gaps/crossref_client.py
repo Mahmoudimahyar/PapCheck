@@ -7,10 +7,15 @@ from typing import Literal
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from refcheck.stages.resolve_gaps.markup import strip_jats, strip_markup
+from refcheck.stages.resolve_gaps.title_guard import pick_best_hit
+
 logger = logging.getLogger(__name__)
 
 CROSSREF_BASE = "https://api.crossref.org"
 _TIMEOUT = 15.0
+_TITLE_CANDIDATES = 5
+_NON_PAPER_TYPES = frozenset({"peer-review", "dataset", "component", "grant"})
 
 
 class CrossRefResult:
@@ -26,6 +31,7 @@ class CrossRefResult:
         doi: str = "",
         journal: str = "",
         url: str = "",
+        abstract: str = "",
         status: Literal["found", "not_found", "api_error"] = "not_found",
     ) -> None:
         self.found = found
@@ -35,6 +41,7 @@ class CrossRefResult:
         self.doi = doi
         self.journal = journal
         self.url = url
+        self.abstract = abstract
         self.status = status
 
 
@@ -87,7 +94,9 @@ async def search_by_title(
     if authors:
         query += " " + " ".join(authors[:2])
 
-    params = {"query": query, "rows": "1"}
+    # Several candidates: derivative works (peer reviews, addenda, F1000
+    # recommendations) often outrank the original for a title query.
+    params = {"query.bibliographic": query, "rows": str(_TITLE_CANDIDATES)}
     should_close = client is None
     if client is None:
         client = httpx.AsyncClient(timeout=_TIMEOUT)
@@ -98,10 +107,13 @@ async def search_by_title(
         )
         resp.raise_for_status()
         data = resp.json()
-        items = data.get("message", {}).get("items", [])
-        if not items:
-            return CrossRefResult(found=False, status="not_found")
-        return _parse_crossref_work({"message": items[0]})
+        items = [
+            it for it in data.get("message", {}).get("items", [])
+            if isinstance(it, dict) and it.get("type") not in _NON_PAPER_TYPES
+        ]
+        candidates = [_parse_crossref_work({"message": it}) for it in items]
+        best = pick_best_hit(title, [c for c in candidates if c.found], lambda c: c.title)
+        return best or CrossRefResult(found=False, status="not_found")
     except httpx.TimeoutException:
         return CrossRefResult(found=False, status="api_error")
     except httpx.HTTPStatusError:
@@ -119,6 +131,7 @@ def _parse_crossref_work(data: dict[str, object]) -> CrossRefResult:
 
     title_list = msg.get("title", [])
     title = title_list[0] if isinstance(title_list, list) and title_list else ""
+    title = strip_markup(str(title))  # CrossRef titles may carry <p>, <i>, <sub>…
     doi = str(msg.get("DOI", ""))
 
     # Extract year from date-parts
@@ -142,5 +155,6 @@ def _parse_crossref_work(data: dict[str, object]) -> CrossRefResult:
         doi=doi,
         journal=str(journal),
         url=url,
+        abstract=strip_jats(str(msg.get("abstract", "") or "")),
         status="found" if title else "not_found",
     )

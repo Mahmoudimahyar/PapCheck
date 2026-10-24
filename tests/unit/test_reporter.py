@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import docx
-import pytest
 
 from refcheck.models.claim import Claim
 from refcheck.models.pipeline import PipelineState
@@ -165,7 +164,8 @@ class TestReporter:
         verifications = [
             VerificationResult(claim_id=1, reference_id=1, verdict="supported", confidence=0.9),
             VerificationResult(claim_id=2, reference_id=2, verdict="contradicted", confidence=0.8),
-            VerificationResult(claim_id=3, reference_id=3, verdict="partially_supported", confidence=0.6),
+            VerificationResult(claim_id=3, reference_id=3, verdict="partially_supported",
+                               confidence=0.6),
         ]
         state = _make_state(refs, claims, verifications)
         output = tmp_path / "report.docx"
@@ -252,4 +252,4 @@ class TestReporter:
         doc = docx.Document(str(output))
         full_text = "\n".join(p.text for p in doc.paragraphs)
         assert "Methodology Note" in full_text
-        assert "multi-model" in full_text.lower()
+        assert "cascade" in full_text.lower() and "different family" in full_text.lower()

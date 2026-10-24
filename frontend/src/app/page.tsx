@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { UploadZone } from "@/components/refcheck/upload-zone";
 import { SessionHistory } from "@/components/refcheck/session-history";
-import { createSession, startPipeline } from "@/lib/api";
+import { ModelStatusCard } from "@/components/refcheck/model-status-card";
+import { createSession, getLibraryStats, startPipeline } from "@/lib/api";
 
 export default function HomePage() {
   const router = useRouter();
@@ -15,6 +17,13 @@ export default function HomePage() {
   const [pdfs, setPdfs] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [libraryCount, setLibraryCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    getLibraryStats()
+      .then((stats) => setLibraryCount(stats.total))
+      .catch(() => setLibraryCount(null));
+  }, []);
 
   const handleStart = async () => {
     if (!manuscript) return;
@@ -85,6 +94,18 @@ export default function HomePage() {
           </div>
         </div>
       )}
+
+      {libraryCount !== null && libraryCount > 0 && (
+        <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground bg-muted/40">
+          <BookOpen className="h-4 w-4 text-primary" />
+          <span>
+            Your library has <strong className="text-foreground">{libraryCount}</strong>{" "}
+            paper{libraryCount !== 1 ? "s" : ""}. These will be matched automatically.
+          </span>
+        </div>
+      )}
+
+      <ModelStatusCard />
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 

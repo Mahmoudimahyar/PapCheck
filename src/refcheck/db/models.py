@@ -41,6 +41,7 @@ class ReferenceDB(SQLModel, table=True):
     doi: str | None = None
     journal: str | None = None
     pmid: str | None = None
+    pmc_id: str | None = None
     volume: str | None = None
     pages: str | None = None
     url: str | None = None
@@ -52,6 +53,24 @@ class ReferenceDB(SQLModel, table=True):
     retraction_detail: str = ""
     duplicate_of: int | None = None
     is_supplementary: bool = False
+    # V2 fields
+    raw_text_original: str = ""
+    repair_applied: str = "none"
+    reference_type: str = "journal_article"
+    abstract_text: str | None = None
+    abstract_source: str | None = None
+    # V5: does the attached PDF belong to this reference?
+    identity_status: str = "unverified"
+    # V5.2: author-year letter, "(2018b)" -> "b" (citations must match it)
+    year_suffix: str | None = None
+    # V5.8 G3: the uploaded PDF was unusable and replaced (library / open access)
+    replaced_upload_reason: str | None = None
+    # Free-full-text hint from OpenAlex (models/open_access.py); metadata only
+    oa_status: str | None = None
+    oa_url: str | None = None
+    oa_pdf_url: str | None = None
+    oa_license: str | None = None
+    oa_version: str | None = None
 
 
 class ClaimDB(SQLModel, table=True):
@@ -63,6 +82,7 @@ class ClaimDB(SQLModel, table=True):
     session_id: str = Field(foreign_key="sessions.id", index=True)
     claim_number: int
     manuscript_text: str = ""
+    paragraph_text: str = ""
     extracted_claim: str = ""
     claim_type: str = "factual"
     reference_ids_json: str = "[]"
@@ -71,6 +91,15 @@ class ClaimDB(SQLModel, table=True):
     atomic_claims_json: str = "[]"
     location_json: str | None = None
     skipped: bool = False
+    # V5: references cited together in the same sentence
+    co_cited_count: int = 1
+    # V5.2: clause this reference is cited for ("" = whole sentence / legacy row),
+    # "fragment" for incomplete sentences, and an in-text citation that fits
+    # several references (reference_ids holds the best guess).
+    cited_for: str = ""
+    claim_quality: str = "ok"
+    mapping_ambiguous: bool = False
+    candidate_reference_ids_json: str = "[]"
 
 
 class VerificationDB(SQLModel, table=True):
@@ -95,6 +124,35 @@ class VerificationDB(SQLModel, table=True):
     original_confidence: float | None = None
     atomic_results_json: str | None = None
     evidence_sections_json: str | None = None
+    # V2 fields
+    model_reasoning_json: str | None = None
+    cannot_verify_reason: str | None = None
+    section_relevance: str = "high"
+    text_quality_score: float = 1.0
+    retry_strategy_used: str | None = None
+    retry_attempts: int = 0
+    # V4/V5 layer trace (votes kept for the UI voting panel)
+    votes_json: str | None = None
+    consensus_type: str = ""
+    final_tier: int = 0
+    escalation_path_json: str = "[]"
+    total_models_consulted: int = 0
+    agreement_ratio: float = 0.0
+    # V5 cascade fields
+    decided_by: str = "none"
+    screen_p_support: float | None = None
+    screen_p_contradict: float | None = None
+    screen_p_topic: float | None = None
+    layer_path_json: str = "[]"
+    cost_usd: float = 0.0
+    latency_ms: int = 0
+    quotes_validated: bool | None = None
+    # V5.4 partial sub-types (models/partial_types.py)
+    partial_type: str | None = None
+    partial_severity: str | None = None
+    author_action: str = ""
+    unsupported_elements_json: str = "[]"
+    guards_applied_json: str = "[]"
 
 
 class PipelineEventDB(SQLModel, table=True):

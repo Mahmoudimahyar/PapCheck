@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from refcheck.api.routes.events import emit_event
+from refcheck.llm import degradation
 from refcheck.models.pipeline import PipelineEvent, PipelineState
 from refcheck.services.persist import persist_report_path, update_stage
 from refcheck.stages.generate_report import generate_report
@@ -22,7 +23,10 @@ async def run_report(
     ))
     start = time.time()
     report_path = session_dir / f"refcheck_report_{session_id}.docx"
-    await asyncio.to_thread(generate_report, state, report_path)
+    # V5.8 G1: roles that ran degraded in stage 5 (saved by pipeline_runner)
+    degraded = [degradation.describe(item) for item in
+                degradation.load(session_dir / degradation.RUN_FILE).values()]
+    await asyncio.to_thread(generate_report, state, report_path, degraded)
     elapsed = time.time() - start
 
     persist_report_path(session_id, str(report_path))

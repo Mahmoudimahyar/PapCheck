@@ -1,5 +1,6 @@
 """Structured logging configuration for RefCheck AI."""
 
+import contextlib
 import logging
 import os
 import sys
@@ -18,6 +19,14 @@ def setup_logging() -> None:
         "%(asctime)s | %(levelname)-7s | %(name)-30s | %(message)s"
     )
     date_fmt = "%Y-%m-%d %H:%M:%S"
+
+    # Windows consoles default to cp1252; titles with "β" or "–" would make the
+    # handler raise UnicodeEncodeError on every such record.
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        # ValueError/OSError: stream already detached/closed (e.g. under some test runners)
+        with contextlib.suppress(ValueError, OSError):
+            reconfigure(encoding="utf-8", errors="replace")
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter(fmt, datefmt=date_fmt))

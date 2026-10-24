@@ -128,24 +128,20 @@ CrossRef is best for DOI resolution. Semantic Scholar has the best abstract data
 
 | Library | Purpose | Why This One |
 |---------|---------|--------------|
-| **anthropic** SDK | Claude API (primary verifier) | Best for structured reasoning with long context |
-| **openai** SDK | GPT API (Tier 2 second opinion) | Different training data = independent second opinion |
-| **litellm** | Unified LLM interface | Single interface for Claude, GPT, Gemini — makes multi-model voting easy. Also handles retries and fallbacks |
+| **litellm** | Unified LLM interface (only used inside `refcheck.llm`) | One interface for OpenAI chat + Decisions API + embeddings and Anthropic Claude; we add our own role resolution, key rotation, retries/backoff, strict JSON schema output and cost tracking on top |
 
-**LLM Selection:**
+**LLM Selection (V5 "screen → verify → judge" cascade; models are picked by role, see `src/refcheck/llm/model_registry.py`):**
 
-| Role | Model | Why |
-|------|-------|-----|
-| Primary verifier (Tier 1) | **Claude Sonnet 4.5** | Best price/performance for structured reasoning. ~$3/1M input tokens. Excellent at following complex instructions and producing valid JSON |
-| Second opinion (Tier 2) | **GPT-4o** | Different training data from Claude = genuinely independent second opinion |
-| Claim extraction | **Claude Sonnet 4.5** | Same model, different prompt. Claim extraction is simpler than verification |
-| PDF section retrieval | **Claude Haiku 4.5** | Cheap and fast, just needs to identify relevant paragraphs |
+| Role | Default model | Fallbacks | Why |
+|------|---------------|-----------|-----|
+| screen (L1) | OpenAI Decisions API `gpt-6-luna` | none (screen disabled) | ~0.2 s, $0.10/M input; P(problem) for every pair, auto-clear only behind strict code gates + calibration |
+| verifier (L2) | `claude-haiku-5-5` (effort low) | `gpt-6-luna` | Best measured verifier (problem F1 0.905 on Citation-Integrity test, ~$0.0008/pair); decides most pairs with verbatim quotes |
+| judge (L3) | `claude-sonnet-5-5` (effort low) | `gpt-6.1-sol` | Only for unusual positives (no validated quote or a screen conflict); judges scored below the verifier on the benchmark, so they are off the main path |
+| confirm (cross-check) | `gpt-6-luna` (effort low) | `gpt-6.1-sol` | Blind, different-family check of every negative verdict; disagreement → "disputed" for human review. claude-opus-5-5 is excluded (refused 24% of biomedical pairs) |
+| utility | `gpt-6-luna` (effort none) | `claude-haiku-5-5` | Title repair and other small structured tasks |
+| embedding | `text-embedding-3-small` | `text-embedding-3-large` (1024 dims) | Hybrid BM25 + embedding retrieval of evidence passages |
 
-**Why Claude Sonnet as primary (not Opus):**
-- Sonnet is ~10x cheaper than Opus
-- For structured verification with forced grounding, Sonnet follows instructions just as well
-- A manuscript with 60 references = ~60-80 LLM calls. At Opus pricing, that's expensive. At Sonnet pricing, it's a few dollars total
-- We can always escalate individual uncertain cases to Opus in Tier 2
+`REFCHECK_PRIVACY_PROFILE=anthropic_only` keeps everything on Anthropic (screen and embeddings off).
 
 **Why not fully open-source LLMs:**
 - For verification accuracy, we need the best models available
@@ -341,15 +337,15 @@ dev = [
 
 | Component | Estimate | Notes |
 |-----------|----------|-------|
-| Claude Sonnet (claim extraction, ~60 calls) | ~$0.30 | Short prompts, structured output |
-| Claude Sonnet (verification, ~60 calls) | ~$1.50 | Longer prompts with source text |
-| Claude Haiku (section retrieval, ~60 calls) | ~$0.05 | Very short prompts |
-| GPT-4o (Tier 2 second opinion, ~10 calls) | ~$0.30 | Only for uncertain cases |
-| API calls (CrossRef, S2, Unpaywall) | $0.00 | Free APIs |
+| Screen + verifier (every sourced pair, ~150 pairs) | ~$0.10 | Decisions API + gpt-6-luna |
+| Judge (pairs not cleanly supported) | ~$1–3 | claude-sonnet-5-5 on an ≤8k-token evidence pack; dominates cost |
+| Confirm (verifier/judge disagreements) | ~$0.10 | gpt-6.1-sol, a small share of pairs |
+| Embeddings (retrieval) | <$0.01 | text-embedding-3-small, cached per document |
+| API calls (CrossRef, S2, PubMed, Unpaywall) | $0.00 | Free APIs |
 | GROBID (self-hosted) | $0.00 | Runs locally |
-| **Total per manuscript** | **~$2.15** | |
+| **Total per manuscript** | **~$1.50–3.50** | Measured on the eval smoke: ~$12 per 1,000 pairs |
 
-This is very affordable. Even processing 100 manuscripts would cost ~$215.
+Per-run cost by role is reported in the stage 5 event and `/api/sessions/{id}/results` (`total_cost_usd`).
 
 ---
 

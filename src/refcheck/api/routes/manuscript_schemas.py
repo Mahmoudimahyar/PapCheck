@@ -2,7 +2,10 @@
 
 from pydantic import BaseModel, Field
 
+from refcheck.api.routes.results_schemas import PartialFields
 from refcheck.models.evidence import ClaimLocation, EvidenceSection
+from refcheck.stages.generate_report.claim_signals import ClaimSignals
+from refcheck.stages.generate_report.result_signals import ResultSignals
 
 
 class ParagraphClaim(BaseModel):
@@ -47,10 +50,27 @@ class ClaimDetailResponse(BaseModel):
     priority: str = ""
     atomic_claims: list[str] = Field(default_factory=list)
     location: ClaimLocation | None = None
+    # V5.2: cited-for clause, fragment and ambiguous-mapping warnings
+    signals: ClaimSignals = Field(default_factory=ClaimSignals)
 
 
-class VerificationEvidence(BaseModel):
-    """Verification evidence for a single reference."""
+class ModelReasoningResponse(BaseModel):
+    """Single model's reasoning detail (V2)."""
+
+    model_name: str = ""
+    model_display: str = ""
+    verdict: str = "cannot_verify"
+    confidence: float = 0.0
+    reasoning: str = ""
+    evidence_quotes: list[str] = Field(default_factory=list)
+    source_section_preview: str = ""
+    response_time_ms: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+class VerificationEvidence(PartialFields):
+    """Verification evidence for a single reference (V5.4 fields from PartialFields)."""
 
     reference_id: int
     reference_title: str = ""
@@ -63,6 +83,15 @@ class VerificationEvidence(BaseModel):
     atomic_results: list[dict[str, object]] | None = None
     user_override: bool = False
     user_override_reason: str = ""
+    # V2 fields
+    model_reasoning: list[ModelReasoningResponse] = Field(
+        default_factory=list,
+    )
+    cannot_verify_reason: str | None = None
+    source_coverage: str = "no_source"
+    section_relevance: str = "high"
+    text_quality_score: float = 1.0
+    signals: ResultSignals = Field(default_factory=ResultSignals)  # V5.2
 
 
 class EvidenceResponse(BaseModel):

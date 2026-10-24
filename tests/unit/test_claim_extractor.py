@@ -118,7 +118,8 @@ class TestExtractClaims:
         fixture = _load_fixture("multiple_refs.json")
         section = ManuscriptSection(
             heading="Introduction",
-            text="Several studies have demonstrated the efficacy of nanoparticle delivery [1, 2, 3].",
+            text=("Several studies have demonstrated the efficacy of nanoparticle delivery "
+                  "[1, 2, 3]."),
         )
         manuscript = _make_manuscript(sections=[section])
 
@@ -181,7 +182,8 @@ class TestExtractClaims:
         fixture = _load_fixture("contrast.json")
         section = ManuscriptSection(
             heading="Discussion",
-            text="Unlike Jones et al. [5] who reported no significant effect, our study found clear benefit.",
+            text=("Unlike Jones et al. [5] who reported no significant effect, our study "
+                  "found clear benefit."),
         )
         manuscript = _make_manuscript(sections=[section])
 

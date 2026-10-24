@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { VerificationEvidenceCard } from "@/components/refcheck/verification-evidence-card";
+import { CitedFor, ClaimWarnings } from "@/components/refcheck/result-signals";
 import { VotingSection } from "@/components/viewer/voting-section";
 import { getEvidence } from "@/lib/api";
 import type { EvidenceResponse } from "@/lib/types";
@@ -53,7 +54,7 @@ export function EvidencePanel({
     );
   }
   if (error || !data) {
-    return <div className="p-4 text-red-500 text-sm">Failed to load evidence: {error}</div>;
+    return <div className="p-4 text-red-600 dark:text-red-400 text-sm">Failed to load evidence: {error}</div>;
   }
 
   const { claim, verifications, voting_record } = data;
@@ -66,6 +67,11 @@ export function EvidencePanel({
           <Button variant="ghost" size="sm" onClick={onClose}>✕</Button>
         </div>
         <p className="text-sm text-muted-foreground italic">{claim.extracted_claim}</p>
+        <CitedFor citedFor={claim.signals?.cited_for} />
+        <ClaimWarnings claim={{
+          ...claim, claim_quality: claim.signals?.fragment ? "fragment" : "ok",
+          mapping_note: claim.signals?.mapping_text,
+        }} />
         <div className="flex gap-2">
           <Badge variant="outline">{claim.claim_type}</Badge>
           <Badge variant="outline">{claim.priority}</Badge>

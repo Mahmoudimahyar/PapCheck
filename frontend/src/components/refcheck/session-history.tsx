@@ -103,10 +103,10 @@ export function SessionHistory() {
       <div className="space-y-2">
         {sessions.map((s) => (
           <Card key={s.id} className="p-4">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="flex-1 min-w-0 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-sm truncate">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-sm truncate max-w-full">
                     {s.manuscript_filename}
                   </span>
                   <Badge
@@ -116,10 +116,10 @@ export function SessionHistory() {
                     {s.status}
                   </Badge>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <span>{formatDate(s.created_at)}</span>
-                  <span>{s.pdf_count} PDF{s.pdf_count !== 1 ? "s" : ""}</span>
-                  <span className="font-mono">{s.id}</span>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span className="whitespace-nowrap">{formatDate(s.created_at)}</span>
+                  <span className="whitespace-nowrap">{s.pdf_count} PDF{s.pdf_count !== 1 ? "s" : ""}</span>
+                  <span className="font-mono break-all">{s.id}</span>
                 </div>
               </div>
 

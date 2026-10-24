@@ -56,6 +56,14 @@ export const CONSENSUS_LABELS: Record<string, string> = {
   supermajority: "Strong Majority",
   majority: "Majority",
   tiebreaker: "Tiebreaker",
+  // V5.1 cascade: a negative verifier verdict is cross-checked by another model family
+  confirmed: "Confirmed by 2 model families",
+  disputed: "Disputed — needs review",
+  verifier_unconfirmed: "Unconfirmed — needs review",
+  // V5.5: the element check cleared some or all elements of a partial verdict
+  adjudicated: "Element check",
+  // V5.6: a deterministic rule (number / lineage) turned a supported verdict into a partial
+  rule: "Rule check",
 };
 
 export const CONSENSUS_STYLES: Record<string, string> = {
@@ -63,4 +71,9 @@ export const CONSENSUS_STYLES: Record<string, string> = {
   supermajority: "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400",
   majority: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
   tiebreaker: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+  confirmed: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+  disputed: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  verifier_unconfirmed: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+  adjudicated: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300",
+  rule: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
 };

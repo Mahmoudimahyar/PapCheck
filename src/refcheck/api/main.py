@@ -17,16 +17,20 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 from refcheck.api.middleware import RequestLoggingMiddleware  # noqa: E402
+from refcheck.api.routes.breakdown import router as breakdown_router  # noqa: E402
 from refcheck.api.routes.claims import router as claims_router  # noqa: E402
 from refcheck.api.routes.events import router as events_router  # noqa: E402
 from refcheck.api.routes.health import router as health_router  # noqa: E402
+from refcheck.api.routes.library import router as library_router  # noqa: E402
 from refcheck.api.routes.manuscript import router as manuscript_router  # noqa: E402
 from refcheck.api.routes.references import router as references_router  # noqa: E402
 from refcheck.api.routes.reports import router as reports_router  # noqa: E402
 from refcheck.api.routes.results import router as results_router  # noqa: E402
 from refcheck.api.routes.sessions import router as sessions_router  # noqa: E402
 from refcheck.db.engine import init_db  # noqa: E402
-from refcheck.llm.env_setup import setup_llm_env_vars  # noqa: E402
+from refcheck.library.engine import get_library_engine  # noqa: E402
+from refcheck.llm.cost_tracker import CostTracker  # noqa: E402
+from refcheck.llm.roles import role_status  # noqa: E402
 from refcheck.utils.logging_config import setup_logging  # noqa: E402
 
 _logger = logging.getLogger(__name__)
@@ -36,12 +40,16 @@ _logger = logging.getLogger(__name__)
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan: startup and shutdown hooks."""
     setup_logging()
-    setup_llm_env_vars()
+    # litellm logs two INFO lines per request; keep our own logs readable.
+    for name in ("LiteLLM", "LiteLLM Router", "LiteLLM Proxy"):
+        logging.getLogger(name).setLevel(logging.WARNING)
     init_db()
+    get_library_engine()
     _logger.info(
-        "RefCheck AI v3.0.0 started. DB_PATH=%s, ANTHROPIC_KEY=%s",
+        "RefCheck AI v3.0.0 started. DB_PATH=%s, LLM roles=%s, budget per run=$%.2f",
         os.getenv("REFCHECK_DB_PATH", "~/.refcheck/refcheck.db"),
-        bool(os.environ.get("ANTHROPIC_API_KEY")),
+        {role: status.model_id for role, status in role_status().items()},
+        CostTracker().max_cost,
     )
     yield
     _logger.info("RefCheck AI shutting down")
@@ -69,5 +77,7 @@ app.include_router(references_router)
 app.include_router(events_router)
 app.include_router(reports_router)
 app.include_router(results_router)
+app.include_router(breakdown_router)
 app.include_router(claims_router)
 app.include_router(manuscript_router)
+app.include_router(library_router)

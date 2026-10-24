@@ -177,23 +177,25 @@ Rules:
 ```python
 # NEVER do this:
 response = client.messages.create(
-    model="claude-sonnet-4-5-20250514",
+    model="<hard-coded model id>",
+    temperature=0.1,                       # Claude 5.5 / GPT-6 reasoning models reject this
     messages=[{"role": "user", "content": f"Verify: {claim}"}]
 )
 
 # ALWAYS do this:
-from refcheck.llm.client import call_llm
-from refcheck.models.verification import VerificationResult
+from refcheck.llm import call_llm
+from refcheck.models.verification import JudgeOutput
 
 result = await call_llm(
-    template="grounded_verification",      # → loads prompts/grounded_verification.md
-    variables={"claim": claim, "source_text": source_text},
-    output_model=VerificationResult,       # Pydantic validation
-    model="claude-sonnet-4-5-20250514",
+    template="verify_claim",               # → loads prompts/verify_claim.md
+    variables={"claim": claim, "passages": render_pack(pack)},  # retrieved passages, never whole papers
+    output_model=JudgeOutput,              # Pydantic validation (strict JSON schema)
+    role="verifier",                       # model picked by role (llm/model_registry.py), never by name
+    cost_tracker=tracker, task="verify_verifier",
 )
 ```
 
-The `call_llm` function handles: template rendering, API call, JSON parsing, Pydantic validation, retry on failure, logging.
+The `call_llm` function handles: template rendering, role → model resolution with fallbacks, key rotation, strict JSON-schema output, Pydantic validation, retry/backoff, prompt caching, cost tracking and logging. Use `decide()` for the Decisions API screen and `embed()` for embeddings.
 
 ---
 

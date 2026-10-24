@@ -156,7 +156,7 @@ function DissenterNote({ votes }: { votes: ModelVote[] }) {
   const dissenters = votes.filter((v) => v.verdict !== majorityVerdict && v.verdict !== "cannot_verify");
   if (dissenters.length === 0) return null;
   return (
-    <p className="text-[10px] text-amber-600 dark:text-amber-400">
+    <p className="text-[10px] text-amber-700 dark:text-amber-400">
       ⚠ {dissenters.length} dissent{dissenters.length > 1 ? "s" : ""}
     </p>
   );

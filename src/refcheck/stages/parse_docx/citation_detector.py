@@ -13,9 +13,10 @@ _NUMBERED_CITATION = re.compile(
     r"\[(\d+(?:\s*[-–]\s*\d+)?(?:\s*,\s*\d+(?:\s*[-–]\s*\d+)?)*)\]"
 )
 
-# Author-year citation: (Smith, 2020) or (Smith et al., 2020) or (Smith & Jones, 2020)
+# Author-year citation: (Smith, 2020) or (Smith et al., 2020) or (Smith & Jones, 2020);
+# the year keeps its disambiguation letter: (Smith et al., 2018b)
 _AUTHOR_YEAR_CITATION = re.compile(
-    r"\(([A-Z][a-z]+(?:\s+(?:et\s+al\.|&\s+[A-Z][a-z]+))?(?:,?\s*\d{4}))\)"
+    r"\(([A-Z][a-z]+(?:\s+(?:et\s+al\.|&\s+[A-Z][a-z]+))?(?:,?\s*\d{4}[a-z]?))\)"
 )
 
 CitationStyle = Literal["numbered", "author_year", "footnote", "unknown"]

@@ -4,11 +4,12 @@ import { Badge } from "@/components/ui/badge";
 import type { Verdict } from "@/lib/types";
 
 const VERDICT_CONFIG: Record<Verdict, { label: string; className: string }> = {
-  supported: { label: "Supported", className: "bg-green-600 text-white hover:bg-green-700" },
-  partially_supported: { label: "Partial", className: "bg-amber-500 text-white hover:bg-amber-600" },
+  supported: { label: "Supported", className: "bg-green-700 text-white hover:bg-green-800" },
+  partially_supported: { label: "Partial", className: "bg-amber-700 text-white hover:bg-amber-800" },
   not_supported: { label: "Not Supported", className: "bg-red-600 text-white hover:bg-red-700" },
   contradicted: { label: "Contradicted", className: "bg-red-800 text-white hover:bg-red-900" },
-  cannot_verify: { label: "Can't Verify", className: "bg-gray-400 text-white hover:bg-gray-500" },
+  cannot_verify: { label: "Can't Verify", className: "bg-gray-500 text-white hover:bg-gray-600" },
+  not_relevant: { label: "Not Relevant", className: "bg-violet-600 text-white hover:bg-violet-700" },
 };
 
 interface VerificationBadgeProps {
@@ -31,9 +32,9 @@ interface PriorityBadgeProps {
 
 export function PriorityBadge({ priority }: PriorityBadgeProps) {
   const styles: Record<string, string> = {
-    high: "bg-red-100 text-red-800 border-red-200",
-    medium: "bg-amber-100 text-amber-800 border-amber-200",
-    low: "bg-gray-100 text-gray-600 border-gray-200",
+    high: "bg-red-100 text-red-800 border-red-200 dark:bg-red-900 dark:text-red-200 dark:border-red-800",
+    medium: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900 dark:text-amber-200 dark:border-amber-800",
+    low: "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700",
   };
   return (
     <Badge variant="outline" className={styles[priority] ?? styles.low}>

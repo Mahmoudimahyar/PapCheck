@@ -61,3 +61,7 @@ tests/fixtures/manuscripts/*.docx
 tests/fixtures/pdfs/*.pdf
 !tests/fixtures/manuscripts/.gitkeep
 !tests/fixtures/pdfs/.gitkeep
+
+# Local build / tool output
+frontend/tsconfig.tsbuildinfo
+test_llm_results.json

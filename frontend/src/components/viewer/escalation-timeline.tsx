@@ -37,7 +37,7 @@ export function EscalationTimeline({
         {rounds.map((round, ri) => (
           <div key={round.tier} className="flex items-start gap-2">
             {ri > 0 && <TimelineArrow />}
-            <RoundCard round={round} isLast={ri === rounds.length - 1} />
+            <RoundCard round={round} />
           </div>
         ))}
         <TimelineArrow />
@@ -72,8 +72,8 @@ interface RoundData {
   votes: ModelVote[];
 }
 
-function RoundCard({ round, isLast }: { round: RoundData; isLast: boolean }) {
-  const outcome = describeOutcome(round.votes, isLast);
+function RoundCard({ round }: { round: RoundData }) {
+  const outcome = describeOutcome(round.votes);
   return (
     <div className="rounded-md border p-2 min-w-[120px]">
       <p className="text-[10px] font-medium text-muted-foreground mb-1.5">
@@ -90,7 +90,7 @@ function RoundCard({ round, isLast }: { round: RoundData; isLast: boolean }) {
 }
 
 function RoundCardVertical({ round }: { round: RoundData }) {
-  const outcome = describeOutcome(round.votes, false);
+  const outcome = describeOutcome(round.votes);
   return (
     <div className="flex items-start gap-2">
       <div className="w-2 h-2 rounded-full bg-muted-foreground mt-1 shrink-0" />
@@ -122,7 +122,7 @@ function ResolvedBadge({
   const label = CONSENSUS_LABELS[consensusType] ?? consensusType;
   return (
     <div className="flex items-center gap-1.5 mt-1 sm:mt-2">
-      <span className="text-green-600 dark:text-green-400 font-medium text-xs">✓</span>
+      <span className="text-green-700 dark:text-green-400 font-medium text-xs">✓</span>
       <div>
         <p className={`text-xs font-medium ${colors.text}`}>
           {verdict.replace("_", " ")} ({Math.round(confidence * 100)}%)
@@ -151,7 +151,7 @@ function VerticalConnector() {
   );
 }
 
-function describeOutcome(roundVotes: ModelVote[], _isLast: boolean): string {
+function describeOutcome(roundVotes: ModelVote[]): string {
   if (roundVotes.length === 0) return "No models";
   const active = roundVotes.filter((v) => v.verdict !== "cannot_verify");
   if (active.length === 0) return "All abstained";

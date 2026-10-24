@@ -2,6 +2,7 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { CostSummaryCard } from "@/components/refcheck/cost-summary-card";
+import { CascadeSummaryCard } from "@/components/refcheck/cascade-summary-card";
 import type { CostSummary, VerificationResult } from "@/lib/types";
 
 export function ResultsLoadingSkeleton() {
@@ -30,13 +31,17 @@ export function SummaryCard({
     <Card className={bg}>
       <CardContent className="pt-4 text-center">
         <p className={`text-3xl font-bold ${color}`}>{count}</p>
-        <p className="text-xs text-muted-foreground mt-1">{label}</p>
+        <p className="text-xs text-stone-600 dark:text-muted-foreground mt-1">{label}</p>
       </CardContent>
     </Card>
   );
 }
 
 export function CostFromResults({ results }: { results: VerificationResult[] }) {
+  // V5 results carry decided_by + cost_usd; older sessions keep the V4 card.
+  if (results.some((r) => r.decided_by && r.decided_by !== "none")) {
+    return <CascadeSummaryCard results={results} />;
+  }
   const withVoting = results.filter(
     (r) => r.total_models_consulted && r.total_models_consulted > 0,
   );

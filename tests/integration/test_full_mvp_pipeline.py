@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import docx
-import pytest
 
 from refcheck.models.pipeline import PipelineState
 from refcheck.models.reference import ParsedManuscript

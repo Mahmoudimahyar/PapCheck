@@ -1,7 +1,8 @@
-"""Canary tests for LLM grounding and anti-hallucination.
+"""Canary tests for LLM grounding and anti-hallucination (V5 verifier prompt).
 
-These tests make REAL LLM calls to verify the model reads provided text
-rather than relying on training data. Skip gracefully if no API key.
+These tests make REAL LLM calls (role "verifier", prompt verify_claim) to check
+that the model reads the provided passages rather than relying on training
+data. Skipped gracefully when no provider key is set.
 """
 
 import os
@@ -9,121 +10,78 @@ import os
 import pytest
 
 from refcheck.llm.client import call_llm
-from refcheck.models.verification import VerificationResult
+from refcheck.models.verification import JudgeOutput
+from refcheck.stages.verify_claims.taxonomy_prompt import system_variables
 
-_HAS_API_KEY = bool(os.environ.get("ANTHROPIC_API_KEY"))
-_SKIP_REASON = "ANTHROPIC_API_KEY not set"
+_KEY_VARS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY_BACKUP")
+_HAS_API_KEY = any(os.environ.get(name) for name in _KEY_VARS)
+_SKIP_REASON = "no OpenAI/Anthropic API key set"
+
+
+async def _verify(claim: str, passage: str, title: str, claim_type: str = "factual",
+                  ) -> JudgeOutput:
+    variables: dict[str, object] = {
+        "section": "user", "passages": f"[P1] (Results, p.3) {passage}",
+        "coverage": "full_text", "pack_kind": "standard", "source_title": title,
+        "source_authors": "Test Authors", "source_year": 2020, "claim": claim,
+        "claim_type": claim_type, "sentence": claim, "prev_sentence": "", "paragraph": "",
+        "section_heading": "Introduction", "co_cited_count": 1,
+    }
+    return await call_llm("verify_claim", variables, JudgeOutput, role="verifier",
+                          use_cache=False, task="canary",
+                          system_template="verify_claim",
+                          system_variables=system_variables())
 
 
 @pytest.mark.canary
 @pytest.mark.live
 @pytest.mark.skipif(not _HAS_API_KEY, reason=_SKIP_REASON)
 class TestLLMGrounding:
-    """Canary tests that verify the LLM reads provided text, not memory.
-
-    Uses class-scoped event loop to prevent litellm's cached httpx client
-    from referencing a closed event loop between tests (Windows issue).
-    """
+    """The verifier must follow the provided passages, not its memory."""
 
     @pytest.mark.asyncio(loop_scope="class")
     async def test_number_modification(self) -> None:
-        """LLM should report the MODIFIED number from source, not the real one.
-
-        Real finding: aspirin reduces stroke risk by ~22%.
-        We provide text saying 47%. LLM must report 47%.
-        """
-        source_text = (
-            "Our meta-analysis of 12 randomized controlled trials found that "
-            "aspirin therapy was associated with a 47% relative risk reduction "
-            "in ischemic stroke (RR 0.53, 95% CI 0.41-0.68, p < 0.001). "
-            "The number needed to treat was 125 over 5 years."
+        """Real finding is ~22%; the passage says 47%, so 47% is supported."""
+        result = await _verify(
+            "Aspirin reduces stroke risk by 47%",
+            "Our meta-analysis of 12 randomized controlled trials found that aspirin therapy "
+            "was associated with a 47% relative risk reduction in ischemic stroke (RR 0.53, "
+            "95% CI 0.41-0.68, p < 0.001).",
+            "Aspirin and Stroke Prevention Meta-Analysis",
         )
-        result = await call_llm(
-            template="grounded_verification",
-            variables={
-                "claim": "Aspirin reduces stroke risk by 47%",
-                "claim_type": "factual",
-                "source_sections": source_text,
-                "reference_title": "Aspirin and Stroke Prevention Meta-Analysis",
-                "reference_authors": "Test Authors",
-            },
-            output_model=VerificationResult,
-        )
-        # LLM should say supported (because source says 47%)
         assert result.verdict in ("supported", "partially_supported")
-        assert "47" in " ".join(result.evidence_quotes + [result.reasoning])
+        assert "47" in " ".join([q.text for q in result.quotes] + [result.explanation])
 
     @pytest.mark.asyncio(loop_scope="class")
     async def test_author_swap(self) -> None:
-        """LLM should use the provided text's attribution, not real-world knowledge.
-
-        Real: CRISPR-Cas9 was developed by Doudna and Charpentier.
-        We provide text crediting different authors.
-        """
-        source_text = (
-            "The CRISPR-Cas9 gene editing system was first developed by "
-            "Dr. Robert Johnson and Dr. Maria Santos at the University of "
-            "Melbourne in 2010. Their pioneering work demonstrated targeted "
-            "genome editing in mammalian cells."
-        )
-        result = await call_llm(
-            template="grounded_verification",
-            variables={
-                "claim": "CRISPR-Cas9 was developed by Johnson and Santos",
-                "claim_type": "attribution",
-                "source_sections": source_text,
-                "reference_title": "Origins of CRISPR Technology",
-                "reference_authors": "Johnson R, Santos M",
-            },
-            output_model=VerificationResult,
+        """Attribution follows the passage, not real-world knowledge."""
+        result = await _verify(
+            "CRISPR-Cas9 was developed by Johnson and Santos",
+            "The CRISPR-Cas9 gene editing system was first developed by Dr. Robert Johnson "
+            "and Dr. Maria Santos at the University of Melbourne in 2010.",
+            "Origins of CRISPR Technology", claim_type="attribution",
         )
         assert result.verdict == "supported"
 
     @pytest.mark.asyncio(loop_scope="class")
     async def test_negation(self) -> None:
-        """LLM should report what provided text says, even if opposite of reality.
-
-        Real: Vaccines are effective against measles.
-        We provide text claiming otherwise (for testing only).
-        """
-        source_text = (
-            "Our comprehensive review of 50 clinical trials found that "
-            "the standard measles vaccine showed no statistically significant "
-            "reduction in measles incidence (pooled RR 0.97, 95% CI 0.88-1.07, "
-            "p = 0.54). The vaccine appeared to have minimal clinical benefit."
+        """A counterfactual null finding in the passage supports the null claim."""
+        result = await _verify(
+            "Measles vaccine showed no significant reduction in measles incidence",
+            "Our review of 50 clinical trials found that the standard measles vaccine showed "
+            "no statistically significant reduction in measles incidence (pooled RR 0.97, "
+            "95% CI 0.88-1.07, p = 0.54).",
+            "Vaccine Efficacy Review",
         )
-        result = await call_llm(
-            template="grounded_verification",
-            variables={
-                "claim": "Measles vaccine showed no significant reduction in measles incidence",
-                "claim_type": "factual",
-                "source_sections": source_text,
-                "reference_title": "Vaccine Efficacy Review",
-                "reference_authors": "Test Authors",
-            },
-            output_model=VerificationResult,
-        )
-        # LLM should agree with the provided text
         assert result.verdict in ("supported", "partially_supported")
 
     @pytest.mark.asyncio(loop_scope="class")
     async def test_absent_claim(self) -> None:
-        """LLM should say cannot_verify for a claim NOT in the provided text."""
-        source_text = (
-            "This study evaluated the pharmacokinetics of Drug Y in healthy "
-            "volunteers. Peak plasma concentration was reached at 2 hours. "
-            "The half-life was 6.5 hours. No serious adverse events occurred."
+        """A claim absent from the passages is not supported."""
+        result = await _verify(
+            "Drug Y reduces tumor size by 40% in cancer patients",
+            "This study evaluated the pharmacokinetics of Drug Y in healthy volunteers. "
+            "Peak plasma concentration was reached at 2 hours. The half-life was 6.5 hours.",
+            "Drug Y Pharmacokinetics Study",
         )
-        result = await call_llm(
-            template="grounded_verification",
-            variables={
-                "claim": "Drug Y reduces tumor size by 40% in cancer patients",
-                "claim_type": "factual",
-                "source_sections": source_text,
-                "reference_title": "Drug Y Pharmacokinetics Study",
-                "reference_authors": "Test Authors",
-            },
-            output_model=VerificationResult,
-        )
-        # Source text says nothing about tumor size or cancer
-        assert result.verdict in ("cannot_verify", "not_supported")
+        assert result.verdict in ("not_supported", "insufficient_evidence", "not_relevant")

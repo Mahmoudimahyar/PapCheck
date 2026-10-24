@@ -2,58 +2,104 @@
 
 @custom-variant dark (&:is(.dark *));
 
-@theme inline {
-  --color-background: #fafaf9;
-  --color-foreground: #1c1917;
-  --color-card: #ffffff;
-  --color-card-foreground: #1c1917;
-  --color-primary: #1c1917;
-  --color-primary-foreground: #fafaf9;
-  --color-secondary: #f5f5f4;
-  --color-secondary-foreground: #1c1917;
-  --color-muted: #f5f5f4;
-  --color-muted-foreground: #78716c;
-  --color-accent: #f5f5f4;
-  --color-accent-foreground: #1c1917;
-  --color-border: #e7e5e4;
-  --color-input: #e7e5e4;
-  --color-ring: #1c1917;
-  --color-destructive: #dc2626;
-  --color-success: #16a34a;
-  --color-warning: #d97706;
-  --color-info: #2563eb;
+/*
+ * Colour tokens live as plain CSS variables on :root / .dark so the .dark
+ * class can override them at runtime. "@theme inline" maps each Tailwind
+ * colour utility (bg-background, text-foreground, ...) to var(--token).
+ */
+:root {
   --radius: 0.5rem;
+  --background: #fafaf9;
+  --foreground: #1c1917;
+  --card: #ffffff;
+  --card-foreground: #1c1917;
+  --primary: #1c1917;
+  --primary-foreground: #fafaf9;
+  --secondary: #f5f5f4;
+  --secondary-foreground: #1c1917;
+  --muted: #f5f5f4;
+  --muted-foreground: #78716c;
+  --accent: #f5f5f4;
+  --accent-foreground: #1c1917;
+  --border: #e7e5e4;
+  --input: #e7e5e4;
+  --ring: #1c1917;
+  --destructive: #dc2626;
+  --success: #16a34a;
+  --warning: #d97706;
+  --info: #2563eb;
 
-  --color-sidebar-background: #fafaf9;
-  --color-sidebar-foreground: #1c1917;
-  --color-sidebar-primary: #1c1917;
-  --color-sidebar-primary-foreground: #fafaf9;
-  --color-sidebar-accent: #f5f5f4;
-  --color-sidebar-accent-foreground: #1c1917;
-  --color-sidebar-border: #e7e5e4;
-  --color-sidebar-ring: #1c1917;
+  --sidebar-background: #fafaf9;
+  --sidebar-foreground: #1c1917;
+  --sidebar-primary: #1c1917;
+  --sidebar-primary-foreground: #fafaf9;
+  --sidebar-accent: #f5f5f4;
+  --sidebar-accent-foreground: #1c1917;
+  --sidebar-border: #e7e5e4;
+  --sidebar-ring: #1c1917;
 }
 
 .dark {
-  --color-background: #1c1917;
-  --color-foreground: #fafaf9;
-  --color-card: #292524;
-  --color-card-foreground: #fafaf9;
-  --color-primary: #fafaf9;
-  --color-primary-foreground: #1c1917;
-  --color-secondary: #292524;
-  --color-secondary-foreground: #fafaf9;
-  --color-muted: #292524;
-  --color-muted-foreground: #a8a29e;
-  --color-accent: #292524;
-  --color-accent-foreground: #fafaf9;
-  --color-border: #44403c;
-  --color-input: #44403c;
-  --color-ring: #d6d3d1;
-  --color-destructive: #dc2626;
-  --color-success: #16a34a;
-  --color-warning: #d97706;
-  --color-info: #2563eb;
+  --background: #1c1917;
+  --foreground: #fafaf9;
+  --card: #292524;
+  --card-foreground: #fafaf9;
+  --primary: #fafaf9;
+  --primary-foreground: #1c1917;
+  --secondary: #292524;
+  --secondary-foreground: #fafaf9;
+  --muted: #292524;
+  --muted-foreground: #a8a29e;
+  --accent: #292524;
+  --accent-foreground: #fafaf9;
+  --border: #44403c;
+  --input: #44403c;
+  --ring: #d6d3d1;
+  /* lighter status hues keep >= 4.5:1 on the dark background and cards */
+  --destructive: #f87171;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --info: #60a5fa;
+
+  --sidebar-background: #1c1917;
+  --sidebar-foreground: #fafaf9;
+  --sidebar-primary: #fafaf9;
+  --sidebar-primary-foreground: #1c1917;
+  --sidebar-accent: #292524;
+  --sidebar-accent-foreground: #fafaf9;
+  --sidebar-border: #44403c;
+  --sidebar-ring: #d6d3d1;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+
+  --color-sidebar-background: var(--sidebar-background);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 @layer base {

@@ -10,11 +10,14 @@ from refcheck.models.matching import MatchResult
 from refcheck.models.reference import Reference
 from refcheck.stages.match_pdfs.doi_matcher import extract_doi_from_pdf, match_by_doi
 from refcheck.stages.match_pdfs.scorer import classify_match
+from refcheck.stages.match_pdfs.supplement_detector import is_supplement_pdf
 from refcheck.stages.match_pdfs.title_matcher import extract_title_from_pdf, match_by_title
 
 logger = logging.getLogger(__name__)
 
 _CROSSREF_BASE = "https://api.crossref.org"
+# A supplement attached as last resort is never auto-accepted as the article.
+SUPPLEMENT_MAX_CONFIDENCE = 0.75
 
 
 def match_pdfs(
@@ -24,6 +27,10 @@ def match_pdfs(
     """Match uploaded PDFs to manuscript references.
 
     Tries DOI matching first, then title fuzzy, then DOI-CrossRef lookup.
+    Supporting-Information PDFs (which repeat the article title and DOI) are
+    tried after every other file, so the article wins when both were uploaded;
+    a supplement that is the only candidate is attached with capped confidence
+    (needs user confirmation) and the verify stage reports it as pdf_supplement.
     """
     if not pdf_dir.exists():
         logger.warning("PDF directory does not exist: %s", pdf_dir)
@@ -33,6 +40,8 @@ def match_pdfs(
     if not pdf_files:
         logger.info("No PDF files found in %s", pdf_dir)
         return []
+    supplements = {str(p) for p in pdf_files if is_supplement_pdf(p)}
+    pdf_files.sort(key=lambda p: (str(p) in supplements, p.name.lower()))
 
     results: list[MatchResult] = []
     matched_ref_ids: set[int] = set()
@@ -42,7 +51,7 @@ def match_pdfs(
     for pdf_path in pdf_files:
         result = match_by_doi(references, pdf_path)
         if result and result.reference_id not in matched_ref_ids:
-            classified = classify_match(result)
+            classified = _classify(result, supplements)
             results.append(classified)
             matched_ref_ids.add(result.reference_id)
             matched_pdf_paths.add(str(pdf_path))
@@ -54,7 +63,7 @@ def match_pdfs(
             continue
         result = match_by_title(unmatched_refs, pdf_path)
         if result and result.reference_id not in matched_ref_ids:
-            classified = classify_match(result)
+            classified = _classify(result, supplements)
             results.append(classified)
             matched_ref_ids.add(result.reference_id)
             matched_pdf_paths.add(str(pdf_path))
@@ -71,7 +80,7 @@ def match_pdfs(
                 still_unmatched_refs, pdf_path, matched_ref_ids
             )
             if result and result.reference_id not in matched_ref_ids:
-                classified = classify_match(result)
+                classified = _classify(result, supplements)
                 results.append(classified)
                 matched_ref_ids.add(result.reference_id)
                 matched_pdf_paths.add(str(pdf_path))
@@ -80,6 +89,16 @@ def match_pdfs(
         "Matched %d/%d PDFs to references", len(results), len(pdf_files)
     )
     return results
+
+
+def _classify(result: MatchResult, supplements: set[str]) -> MatchResult:
+    """Threshold classification; a supplement is capped below auto-accept."""
+    if result.pdf_path in supplements:
+        logger.warning("Ref %d matched only a supplementary PDF (%s)",
+                       result.reference_id, Path(result.pdf_path or "").name)
+        result = result.model_copy(update={
+            "confidence": min(result.confidence, SUPPLEMENT_MAX_CONFIDENCE)})
+    return classify_match(result)
 
 
 def _match_via_crossref_doi(

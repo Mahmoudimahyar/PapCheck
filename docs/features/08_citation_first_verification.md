@@ -137,9 +137,9 @@ text¹⁻³
 
 **Compound parenthetical with distinct scopes:**
 ```
-"Hydrogels reduce rejection (Kollar et al., 2018) or promote T-cell regulation (Wang et al., 2024)."
-→ Citation 1: Kollar et al., 2018 — scope: "reduce rejection"
-→ Citation 2: Wang et al., 2024 — scope: "promote T-cell regulation"
+"Gel X lowers graft loss (Lorne et al., 2018) or boosts marker Y expression (Vale et al., 2024)."
+→ Citation 1: Lorne et al., 2018 — scope: "lowers graft loss"
+→ Citation 2: Vale et al., 2024 — scope: "boosts marker Y expression"
 ```
 
 **Compound parenthetical with shared scope:**
@@ -159,10 +159,10 @@ text¹⁻³
 
 **Parenthetical year inside parenthetical citation (nested parens):**
 ```
-"...tackling mechanical instability (Man et al., 2016), poor vascularization (Huan et al., 2024; Bai et al., 2023)."
+"...addressing low stiffness (Orr et al., 2016), slow degradation (Roe et al., 2024; Lark et al., 2023)."
 → Two separate citation groups within a larger sentence
-→ Man: "mechanical instability"
-→ Huan + Bai: "poor vascularization"
+→ Orr: "low stiffness"
+→ Roe + Lark: "slow degradation"
 ```
 
 **Author names with particles:**
@@ -175,13 +175,13 @@ text¹⁻³
 
 **Same author multiple works:**
 ```
-"(Dzhonova et al., 2018a, 2018b)"
-→ Two citations: Dzhonova 2018a AND Dzhonova 2018b
+"(Pell et al., 2018a, 2018b)"
+→ Two citations: Pell 2018a AND Pell 2018b
 ```
 
 **Citations with "n.d." (no date):**
 ```
-"(Desai et al., n.d.)"
+"(Quill et al., n.d.)"
 → Valid citation, year = None
 ```
 
@@ -300,11 +300,11 @@ When a sentence contains multiple citations, each becomes a separate `CitationIn
 
 Example:
 ```
-"Hydrogels reduce rejection (Kollar, 2018) and promote T-cells (Wang, 2024)."
+"Gel X lowers graft loss (Lorne, 2018) and boosts marker Y (Vale, 2024)."
 ```
-→ CitationInstance 1: Kollar, sentence_text = full sentence
-→ CitationInstance 2: Wang, sentence_text = full sentence
-→ After scope resolution: Kollar's scope = "reduce rejection", Wang's scope = "promote T-cells"
+→ CitationInstance 1: Lorne, sentence_text = full sentence
+→ CitationInstance 2: Vale, sentence_text = full sentence
+→ After scope resolution: Lorne's scope = "lowers graft loss", Vale's scope = "boosts marker Y"
 
 ---
 
@@ -328,8 +328,8 @@ Not every citation needs LLM-based scope resolution. Use heuristics first:
 
 **Heuristic 3: Multiple separate citations in one sentence → LLM needed**
 ```
-"Hydrogels reduce rejection (Kollar, 2018) and promote T-cells (Wang, 2024)."
-→ Need LLM to determine: Kollar = "reduce rejection", Wang = "promote T-cells"
+"Gel X lowers graft loss (Lorne, 2018) and boosts marker Y (Vale, 2024)."
+→ Need LLM to determine: Lorne = "lowers graft loss", Vale = "boosts marker Y"
 ```
 
 **Heuristic 4: Narrative citation → scope = the clause/sentence following the author**
@@ -352,14 +352,14 @@ Output:
 {
   "scopes": [
     {
-      "citation": "(Kollar et al., 2018)",
-      "scope_text": "hydrogels construct an immunosuppressive microenvironment to reduce transplant rejection",
+      "citation": "(Lorne et al., 2018)",
+      "scope_text": "gel X lowers graft loss in a synthetic rejection model",
       "scope_start": 45,
       "scope_end": 120
     },
     {
-      "citation": "(Wang et al., 2024)",
-      "scope_text": "promote the generation of regulatory T cells",
+      "citation": "(Vale et al., 2024)",
+      "scope_text": "boosts expression of marker Y",
       "scope_start": 124,
       "scope_end": 168
     }
@@ -756,7 +756,7 @@ Missing Citation Warnings:
 ### 10.3 Citation Mapping Issues (new section)
 ```
 Citation Issues:
-  - "(Desai et al., n.d.)" — no publication year, mapped to reference 25 by author name only
+  - "(Quill et al., n.d.)" — no publication year, mapped to reference 25 by author name only
   - "(Smith et al., 2020)" — ambiguous: could match reference 45 or reference 67
 ```
 
@@ -779,10 +779,10 @@ Citation Issues:
 - CD-12: Author with particle: "(de Vries et al., 2020)" detected
 - CD-13: Author with apostrophe: "(O'Brien et al., 2021)" detected
 - CD-14: Prefix ignored: "(see Smith, 2020)" → citation is Smith 2020
-- CD-15: No-date: "(Desai et al., n.d.)" detected with year=None
+- CD-15: No-date: "(Quill et al., n.d.)" detected with year=None
 - CD-16: Mixed citation in parenthetical: "(reviewed in Smith et al., 2020)" detected
 - CD-17: Multiple narrative citations: "Both Smith (2020) and Jones (2021) found..." → 2 citations
-- CD-18: Nested parentheticals: "tackling instability (Man, 2016), hypoxia (Huan, 2024)" → 2 citations
+- CD-18: Nested parentheticals: "addressing low stiffness (Orr, 2016), slow degradation (Roe, 2024)" → 2 citations
 - CD-19: Superscript numbered citations detected (if applicable)
 - CD-20: Full manuscript parse: ≥95% of citations detected vs manual count
 

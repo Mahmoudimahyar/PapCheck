@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { SourceSectionCard } from "@/components/refcheck/source-section-card";
 import { VerificationBadge } from "@/components/refcheck/verification-badge";
+import { DisputePanel, ResultNotes } from "@/components/refcheck/result-signals";
+import { GuardNotes, PartialFinding } from "@/components/refcheck/partial-finding";
 import type { EvidenceResponse, Verdict } from "@/lib/types";
 
 interface VerificationEvidenceCardProps {
@@ -28,6 +30,15 @@ export function VerificationEvidenceCard({ verification: v }: VerificationEviden
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-3 space-y-3">
+        {v.signals?.source_problem_text && (
+          <p className="text-xs text-red-600 dark:text-red-400">
+            {v.signals.source_problem_text}; it was not used as the article.
+          </p>
+        )}
+        <PartialFinding verdict={v.verdict} fields={v} />
+        <DisputePanel dispute={v.signals?.dispute} />
+        <ResultNotes signals={v.signals} />
+        <GuardNotes verdict={v.verdict} guards={v.guards_applied} />
         {v.reasoning && (
           <>
             <div className="text-xs font-medium uppercase text-muted-foreground">Model Reasoning</div>

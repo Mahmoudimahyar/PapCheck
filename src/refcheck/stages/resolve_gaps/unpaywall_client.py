@@ -7,7 +7,6 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_EMAIL = "refcheck@example.com"
 _TIMEOUT = 15
 
 
@@ -19,7 +18,12 @@ async def find_open_access_pdf(
 
     Returns the best available PDF URL, or None if not found.
     """
-    contact_email = email or os.environ.get("UNPAYWALL_EMAIL", _DEFAULT_EMAIL)
+    # The contact e-mail comes only from the caller or the environment (never a
+    # placeholder: Unpaywall asks for a real address).
+    contact_email = (email or os.environ.get("UNPAYWALL_EMAIL", "")).strip()
+    if not contact_email:
+        logger.warning("UNPAYWALL_EMAIL not set, skipping Unpaywall")
+        return None
     url = f"https://api.unpaywall.org/v2/{doi}"
     params = {"email": contact_email}
 

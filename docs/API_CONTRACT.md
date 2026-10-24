@@ -302,6 +302,51 @@ Get all verification results.
 }
 ```
 
+**V5.4 partial sub-types** (taxonomy ids and labels: `src/refcheck/models/partial_types.py`):
+- Query param `partial_type` — a type id (`tangential_source`, `specific_detail_mismatch`,
+  `unsupported_inference`, `scope_overgeneralized`, `missing_element`, `certainty_overstated`,
+  `coverage_limited`), `unclassified` (partial results without a recorded type: older runs or
+  reviewer overrides), `guarded`
+  (supported results with `guards_applied`), `guarded:<guard>`, or `all`. Only partially
+  supported verdicts are grouped by type; ANDed with the other filters; paging unchanged.
+- Each result (and each verification of `GET /api/sessions/{id}/evidence/{claim_id}`) adds
+  `partial_type` (str | null), `partial_severity` (`minor` | `major` | null), `author_action`
+  (one sentence), `unsupported_elements` (list[str]) and `guards_applied` (list of
+  `evidence_recheck` | `cocited_share` | `author_framing_or_example` | `overliteral_wording`).
+  Missing severity / action on older rows are filled from the taxonomy defaults. When a reviewer
+  override changed the verdict, these fields are empty (they explained the model's verdict).
+- `summary` adds `partial_types` (every type id plus `unclassified`, 0 included),
+  `partial_severity` (`{"major": n, "minor": n}`), `guarded` (int) and `guards` (per guard).
+
+**V5.8 degraded mode:** `summary.degraded_notices` (list[str]) has one sentence per LLM role
+that ran degraded in the run (screen skipped, BM25-only retrieval, confirm on a same-family
+fallback...), then each fix once (e.g. "Add credits to the OpenAI account..."); `[]` for a
+normal run. Read from `<session_dir>/llm_degradations.json`; `GET /api/sessions/{session_id}`
+returns the same list as `degraded_notices`. The Results page shows it as an amber banner.
+
+### `GET /api/sessions/{session_id}/partial-breakdown` (V5.4)
+
+Partially supported results by sub-type, and supported results whose concern a benign guard
+cleared.
+
+**Response:** `200 OK`
+```json
+{
+  "total_partial": 18,
+  "types": [
+    {"type": "specific_detail_mismatch", "label": "Wrong or missing specifics",
+     "meaning": "...", "severity": "major", "count": 3, "major": 3, "minor": 0,
+     "author_action": "...", "claim_ids": [4, 9, 31]}
+  ],
+  "guarded": 12,
+  "guards": [
+    {"guard": "cocited_share", "label": "Co-cited reference", "explanation": "...",
+     "count": 7, "claim_ids": [2, 5]}
+  ]
+}
+```
+`types` lists every type in taxonomy order, then `unclassified`; `guards` lists every guard.
+
 ---
 
 ### `POST /api/sessions/{session_id}/results/{claim_id}/override` (V2)
@@ -353,12 +398,36 @@ Regenerate report after user overrides.
 
 ### `GET /api/health`
 
-**Response:** `200 OK`
+Query: `deep=true` probes every LLM role with one tiny real call (cached 10 minutes; a role down
+for a persistent cause re-tests exhausted keys first, so added credits take effect at once).
+
+**Response:** `200 OK` (`HealthResponse`, `api/routes/health.py`)
 ```json
 {
   "status": "ok",
   "grobid": "connected" | "unavailable",
-  "version": "0.1.0"
+  "database": "connected" | "disconnected",
+  "version": "3.0.0",
+  "llm": "ok" | "degraded" | "unavailable" | "unknown",   // "unavailable" only when the verifier is dead
+  "decisions_api": "available" | "unavailable" | "disabled" | "unknown",
+  "privacy_profile": "standard" | "anthropic_only",
+  "deep": false,
+  "models": {
+    "confirm": {                                  // RoleHealth (api/routes/health_llm.py)
+      "role": "confirm", "model_id": "claude-sonnet-5-5", "available": true, "enabled": true,
+      "last_error": null, "fallback_index": 0, "candidates": ["gpt-6-luna", "gpt-6.1-sol"],
+      "probed": true, "probe_ok": true, "latency_ms": 840, "checked_at": 1761200000.0,
+      // V5.8 degraded mode
+      "degraded": true,
+      "degraded_mode": "fallback" | "skipped" | "bm25_only" | "unavailable" | null,
+      "cause": "billing" | "auth" | "no_key" | "not_found" | "network" | "rate_limit" | "budget" | "other" | null,
+      "persistent": true,                         // will not fix itself
+      "effect": "cross-check runs on claude-sonnet-5-5, the same model family as the verifier: ...",
+      "action": "Add credits to the OpenAI account (or set a key with credit), then re-run."
+    }
+  },
+  "degraded_notices": ["confirm: OpenAI no credits / quota exhausted — ..."],
+  "actions": ["Add credits to the OpenAI account (or set a key with credit), then re-run."]
 }
 ```
 
@@ -410,7 +479,7 @@ app.add_middleware(
 
 ### Response Models
 
-Every endpoint uses a Pydantic response model. FastAPI auto-generates OpenAPI spec from these models. Frontend TypeScript types in `lib/types.ts` should mirror these exactly.
+Every endpoint uses a Pydantic response model. FastAPI auto-generates OpenAPI spec from these models. Frontend TypeScript types in `lib/types.ts` should mirror these exactly (V5.8: `lib/types.ts` is a barrel over `reference-types.ts`, `session-types.ts`, `result-types.ts`, `evidence-types.ts`, `cascade-types.ts`, `signal-types.ts` and the partial-type module; `lib/api.ts` re-exports `api-client.ts`, `api-sessions.ts`, `api-references.ts`, `api-results.ts` and `api-reports.ts`).
 
 ### Versioning Strategy
 

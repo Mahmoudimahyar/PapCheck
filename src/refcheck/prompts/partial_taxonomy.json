@@ -1,0 +1,351 @@
+{
+ "version": "1.1",
+ "dataset": "refcheck_v49_gold",
+ "n_labelled_pairs": 140,
+ "type_ids": [
+  "evidence_gap",
+  "cocited_share",
+  "author_framing_or_example",
+  "overliteral_wording",
+  "tangential_source",
+  "specific_detail_mismatch",
+  "unsupported_inference",
+  "scope_overgeneralized",
+  "missing_element",
+  "certainty_overstated"
+ ],
+ "groups": {
+  "looks_partial_but_fine": [
+   "evidence_gap",
+   "cocited_share",
+   "author_framing_or_example",
+   "overliteral_wording"
+  ],
+  "genuine_problem": [
+   "tangential_source",
+   "specific_detail_mismatch",
+   "unsupported_inference",
+   "scope_overgeneralized",
+   "missing_element",
+   "certainty_overstated"
+  ]
+ },
+ "types": [
+  {
+   "id": "evidence_gap",
+   "name": "Evidence not seen: retrieval miss, abstract-only or wrong PDF, extraction artefact",
+   "group": "looks_partial_but_fine",
+   "definition": "The gap is in the evidence the verifier received, not in the paper. The source states the element, or the element cannot be checked because the tool lacked the article's full text. Causes: (a) retrieval missed the passage (Results, Methods, Discussion, tables, figure legends); (b) coverage was abstract-only because the PDF was unmatched, was the supplement, was a scan without OCR, or was a different paper; (c) a false numeric or term mismatch from text extraction, the numeric checker or the verifier's own tag (dropped >, <, >=, <= glyphs; numerals inside chemical or gene names such as '1,25-dihydroxy' or 'IL-6' read as quantities; a correct figure matched to a different study arm or cohort; a numeric_mismatch tag on a figure that matches exactly).",
+   "decision_rule": "Guard 1, applied to every element the verifier calls absent or mismatched. Assign if ANY holds: (1) a targeted search of the full text (all sections, tables, legends; synonyms) finds the element stated; (2) the mismatch disappears after numeric normalisation (restore dropped comparison symbols, ignore numerals inside chemical/gene names, match the figure to the arm or cohort the claim names) or never existed; (3) coverage was not the article's full text (abstract-only, supplement, unOCR'd scan, identity mismatch) and what is available does not refute the element. Under (1)/(2) the element is supported. Under (3) only, obtain the full text (PDF re-match, OCR, other local copies such as saved HTML) and re-type; if no full text exists the element is 'unverified': verdict partially_supported with flag coverage_limited, reported under 'Could not verify', never charged to the author.",
+   "expected_verdict": "supported (after re-check); partially_supported + coverage_limited when no full text can be obtained",
+   "severity": "none (resolved) / unverified (coverage-limited)",
+   "pipeline_action": "Re-check with expanded evidence (per-element full-text search, PDF re-match/OCR/HTML copy before abstract fallback, numeric normalisation).",
+   "report_subsection": "Supported with minor note (resolved) / Could not verify - coverage (unresolved)",
+   "legacy_tool_tags": "fires as certainty_overstated, numeric_mismatch, not_in_source, overgeneralized",
+   "examples": [
+    "Claim: 'The coated valve stayed competent for more than 6 months in sheep (Ref A).' Retrieved passages were the abstract and introduction; Results say 'all valves remained competent at 190 days'. -> supported after targeted re-retrieval.",
+    "Claim: 'Complication risk rises in patients aged >=65 (Ref B).' Extracted text: 'patients  65 years and older' (the >= glyph was dropped) and the numeric checker flags 65 vs >=65. -> extraction artefact; supported."
+   ],
+   "counts_v49_gold": {
+    "primary_by_gold_label": {
+     "supported": 23,
+     "partially_supported": 3
+    },
+    "primary_total": 26,
+    "any_mention": 34
+   }
+  },
+  {
+   "id": "cocited_share",
+   "name": "Element belongs to a co-cited reference or to another clause",
+   "group": "looks_partial_but_fine",
+   "definition": "The element the checker found missing lies outside this reference's share of the sentence: the in-text citation is attached to a different clause, or another reference cited in the same sentence states it - including a general claim that this reference illustrates with one example. This reference supports its own share and contradicts nothing.",
+   "decision_rule": "Guard 2 (runs before guard 3). Applies only when the sentence carries >=2 references or the citation sits mid-sentence. Assign if ALL: (a) this reference supports its share - the clause it is placed after, else the sentence's core proposition (a background premise alone does not count; one instance of a general claim counts when (b) holds for the general claim); (b) every element it lacks is stated by a co-cited reference, verified in that reference's text or abstract, or in that reference's own verified pair for the same sentence - never assumed from its title; (c) this reference contradicts no element (a contradiction survives as specific_detail_mismatch / unsupported_inference). If (a) fails -> tangential_source. If (b) fails for an element, that element stays genuine (missing_element etc.) and is reported once at sentence level. R3: whenever a co-cited reference verifiably states the element, this type wins over author_framing_or_example; 3(b) applies only when no co-cited reference states the general claim.",
+   "expected_verdict": "supported (note: place each citation next to the clause it supports)",
+   "severity": "none",
+   "pipeline_action": "Judge only this reference's share (narrow cited_for by in-text placement, show co-cited titles/abstracts, sentence-level union check).",
+   "report_subsection": "Supported with minor note",
+   "legacy_tool_tags": "fires as overgeneralized, compound_part_only",
+   "examples": [
+    "'Titanium mesh is used in cranial repair and in orbital-floor reconstruction (Ref C; Ref D).' Ref C reports cranial repair only; Ref D reports orbital floors. -> Ref C supported for its share.",
+    "'Glass-fibre composites are light (Ref E), cheap (Ref F) and corrosion-resistant (Ref G).' Judging Ref F, which reports cost only. -> supported; corrosion resistance is Ref G's clause."
+   ],
+   "counts_v49_gold": {
+    "primary_by_gold_label": {
+     "supported": 21
+    },
+    "primary_total": 21,
+    "any_mention": 41
+   }
+  },
+  {
+   "id": "author_framing_or_example",
+   "name": "Author's own framing, or the source cited as one example",
+   "group": "looks_partial_but_fine",
+   "definition": "The unsupported part is not a factual claim attributed to the source. Either (a) it is the citing author's organising or rhetorical layer: enumeration or numbering ('two stages', 'a second approach'), transitions and motivations ('to overcome these drawbacks'), a contrast that only positions the work against something the reference is not cited for, an evaluative adverb on correctly reported data ('merely half'); or (b) the reference is one valid instance of a modal, existential or illustrative claim ('can', 'may', 'e.g.', 'one approach'), or the missing items are illustrative 'such as' names.",
+   "decision_rule": "Guard 3 (after guard 2). Delete the framing words and illustrative items. Assign if the remaining factual core is supported AND the deleted part asserts no cause, outcome comparison, consequence or conclusion about the world AND, for (b), the claim is modal/illustrative, has no frequency/universality word ('often', 'typically', 'most', 'consistently', 'all', 'widely', 'universally'), names no population other than the source's, and no co-cited reference states the general claim (else cocited_share). If the framing asserts a cause/comparison/conclusion -> unsupported_inference; if the general claim is unhedged or quantified and no co-cited reference states it -> scope_overgeneralized.",
+   "expected_verdict": "supported (optional note: 'e.g., in <model/material>')",
+   "severity": "none",
+   "pipeline_action": "Strip author framing and judge the factual core; a modal or 'e.g.' claim needs one instance.",
+   "report_subsection": "Supported with minor note",
+   "legacy_tool_tags": "fires as overgeneralized, certainty_overstated, not_in_source",
+   "examples": [
+    "'Recovery from an ankle sprain has two stages; the first is swelling that peaks within 48 h (Ref H).' Ref H describes the early swelling; the two-stage scheme is the author's. -> supported.",
+    "'Reminder apps can improve medication adherence (Ref I).' Ref I: one app raised adherence in a 3-month trial. -> supported (one instance satisfies 'can')."
+   ],
+   "counts_v49_gold": {
+    "primary_by_gold_label": {
+     "supported": 6
+    },
+    "primary_total": 6,
+    "any_mention": 16
+   }
+  },
+  {
+   "id": "overliteral_wording",
+   "name": "Over-literal reading of wording, hedging or provenance",
+   "group": "looks_partial_but_fine",
+   "definition": "Every substantive element is supported; the objection is lexical or about provenance: synonyms and abbreviations (a drug's code name vs generic name; 'resorbable' vs 'biodegradable'; 'heart attack' vs 'myocardial infarction'); paraphrase or review-level summary; a missing literal word ('commonly', 'key'); a one-step hedge shift on a proposition the source endorses ('may cause' -> 'contributes to'); an intensifier the source's framing supports; a qualifier the claim already contains; the source authors' own (even hedged) conclusion restated; a general statement the source makes as background about its own field or sub-field, restated in a background sentence for the parent field; the source stating it while citing other work (secondary citation).",
+   "decision_rule": "Guard 4. After mapping synonyms and paraphrases, assign if every element has a supporting passage AND each remaining objection is one of the listed wording-level differences. Disqualifiers: the source explicitly limits the proposition (open question, 'not tested', counter-data) -> certainty_overstated; the source's own study RESULT moved to a broader population, or a frequency/universality quantifier added -> scope_overgeneralized; any absent element -> a genuine type.",
+   "expected_verdict": "supported (optional wording note quoting the source; secondary source: 'consider citing the primary study')",
+   "severity": "none",
+   "pipeline_action": "Treat as supported with a wording note.",
+   "report_subsection": "Supported with minor note",
+   "legacy_tool_tags": "fires as certainty_overstated, overgeneralized",
+   "examples": [
+    "'Long-term use of drug K contributes to liver injury (Ref J).' Ref J: 'drug K may cause hepatotoxicity in chronic users'. -> supported.",
+    "'The filter must have a pore cut-off that retains bacteria (Ref K).' Ref K: 'a sterilising-grade membrane that holds back microorganisms while passing the buffer'. -> supported."
+   ],
+   "counts_v49_gold": {
+    "primary_by_gold_label": {
+     "supported": 14
+    },
+    "primary_total": 14,
+    "any_mention": 28
+   }
+  },
+  {
+   "id": "tangential_source",
+   "name": "Tangential or misplaced citation: core assertion not supported",
+   "group": "genuine_problem",
+   "definition": "The source does not support the core assertion of the cited span - the main qualitative predicate the citation is placed to support (a function, method, mechanism or property credited to it) - for ANY subject. At most it shares the topic, a background premise or an adjacent concept, mentions the point only as other groups' work, or the citation belongs to a neighbouring sentence or another study.",
+   "decision_rule": "Identify the predicate of the clause the citation is attached to. R6 placement: when a single citation closes a sentence and is placed after a final clause it supports (a trailing relative or coordinated clause), judge it as that clause's citation; an earlier clause with no support is recorded as missing_element (secondary: needs its own citation) and the final clause is typed normally. After guards 1-2, assign if no passage supports the attached clause's predicate for any subject. If the source supports the same predicate for a narrower or different subject (one member of the claimed class, a sub-population, a related device) -> scope_overgeneralized. If the unsupported core is a specific value -> specific_detail_mismatch. Verdict: not_supported when the source supports no proposition of the cited span for the claimed subject (only topic, a premise about another subject, other groups' work); partially_supported (flag weak_partial) when at least one subsidiary proposition holds for the claimed subject (a statement about a broader class that contains the subject counts).",
+   "expected_verdict": "not_supported, or partially_supported (weak)",
+   "severity": "major",
+   "pipeline_action": "Flag for author: replace or move the citation (suggest the neighbouring sentence's or bibliography's reference that states it).",
+   "report_subsection": "Weak or misplaced citation",
+   "legacy_tool_tags": "not_in_source, compound_part_only",
+   "examples": [
+    "'Light-activated dressings clear wound bacteria (Ref L).' Ref L tested a silver-loaded dressing; light-activated materials appear only in its introduction as another group's approach. -> not_supported.",
+    "'Ceramic tiles crack under cyclic thermal loading (Ref M).' Ref M studies polymer coatings and only notes that brittle materials in general can fail under cyclic load. -> partially_supported (weak); replace the citation."
+   ],
+   "counts_v49_gold": {
+    "primary_by_gold_label": {
+     "partially_supported": 4,
+     "not_supported": 2
+    },
+    "primary_total": 6,
+    "any_mention": 6
+   }
+  },
+  {
+   "id": "specific_detail_mismatch",
+   "name": "Specific detail wrong, missing or contradicted",
+   "group": "genuine_problem",
+   "definition": "A precise, checkable specific presented as the source's content is absent while the surrounding finding is reported, differs from the source, or is contradicted. Specifics: number, percentage, threshold, unit, n, duration or time point, date or chronology, species/strain/model, graft/material/device type, drug, study arm, dose, route, delivery format, design. Also: any observable fact the claim asserts that the source directly contradicts (opposite outcome, different model, material, arm or usage), a secondary review that misreports the primary study, a citation to the wrong one of two sibling papers.",
+   "decision_rule": "Extract every specific; after the guard-1 numeric normalisation compare each with the source. Assign if any specific is absent (its qualitative point supported), different, or contradicted, or the source states the opposite of an observable fact the claim asserts. R5 contradiction split: a contradicted observable fact (number, outcome, model, usage, material, arm) -> this type; a contradicted evaluation, rationale, purpose or conclusion -> unsupported_inference. A hedged possibility in the claim ('the potential for X') is not contradicted by a study that merely did not observe X. Verdict not_supported when the cited span is only that specific (a bare statistic) and it is absent; otherwise partially_supported.",
+   "expected_verdict": "partially_supported (not_supported for an absent bare statistic)",
+   "severity": "major",
+   "pipeline_action": "Flag for author: correct the specific ('source says X / manuscript says Y') and suggest the reference that states it (co-cites, the source's own primary citation, sibling papers).",
+   "report_subsection": "Wrong or missing specifics",
+   "legacy_tool_tags": "numeric_mismatch, not_in_source, compound_part_only",
+   "examples": [
+    "'The trial enrolled 240 patients over three years (Ref N).' Ref N: 180 patients over three years. -> partially_supported.",
+    "'The drug was given orally to adult dogs (Ref O).' Ref O: intravenous dosing in juvenile dogs. -> partially_supported (two specifics wrong)."
+   ],
+   "counts_v49_gold": {
+    "primary_by_gold_label": {
+     "partially_supported": 15,
+     "not_supported": 1
+    },
+    "primary_total": 16,
+    "any_mention": 18
+   }
+  },
+  {
+   "id": "unsupported_inference",
+   "name": "Author's inference presented as the source's finding",
+   "group": "genuine_problem",
+   "definition": "The facts the claim connects are in the source, but the relation it asserts is not: a cause or mechanism offered for a finding the source reports ('due to', 'because', 'as a result of') - even when that mechanism never appears in the source; an effect credited to a different agent than the source credits; a consequence or implication ('thereby', 'which avoids X'); a comparison, advantage or trade-off against an alternative approach (even one the source does not discuss); a general lesson ('showing that', 'which confirms'); a forward-looking agenda presented as the source's; or the source drawing a different or opposite evaluation, rationale or conclusion.",
+   "decision_rule": "Split the cited span into facts and connectives. Assign if the facts are approximately supported but a connective-bound proposition is not stated or tested, or the source credits a different cause/component, or evaluates or concludes the opposite way. R1 vs missing_element: the unsupported cause, consequence or lesson is the sole explanation or implication attached to a finding the source reports -> this type, whether or not its content appears elsewhere in the source; it is one of several parallel items (a further listed cause, factor, benefit or application next to a supported sibling) -> missing_element. Not this type when: the source authors state the same relation, even hedged (-> overliteral_wording, or certainty_overstated if the hedge is material); the connective only organises the text (-> author_framing_or_example); the source credits the claimed cause together with other factors, i.e. 'X alone' (-> certainty_overstated); the source contradicts an observable fact (-> specific_detail_mismatch, R5).",
+   "expected_verdict": "partially_supported",
+   "severity": "major",
+   "pipeline_action": "Flag for author: mark the link as your own interpretation ('we propose...') or cite a source that states it.",
+   "report_subsection": "Author's inference attributed to the source",
+   "legacy_tool_tags": "compound_part_only, overgeneralized, not_in_source (no dedicated tag today)",
+   "examples": [
+    "'Readmissions fell after the programme because nurses phoned patients at home (Ref P).' Ref P reports the drop but never examines which component caused it.",
+    "'Exercise lowered blood pressure by cutting salt intake (Ref Q).' Ref Q credits weight loss and reports unchanged salt intake."
+   ],
+   "counts_v49_gold": {
+    "primary_by_gold_label": {
+     "partially_supported": 17
+    },
+    "primary_total": 17,
+    "any_mention": 19
+   }
+  },
+  {
+   "id": "scope_overgeneralized",
+   "name": "Result stretched beyond the source's population or breadth",
+   "group": "genuine_problem",
+   "definition": "The claim asserts the source's finding for a broader or different population or context than the source studied - another species, tissue/organ, indication, graft type, material or device class, disease model, or 'both'/'all' categories the source does not cover - or adds a frequency, universality or field-wide quantifier ('often', 'typically', 'consistently', 'most', 'in general', 'widely') that one study cannot establish.",
+   "decision_rule": "Compare subject, population and quantifier with the source's. Assign if (a) the claim's subject/population is broader than or different from the source's AND the moved statement is the source's own study result (or the source itself limits it to its context), or (b) the claim adds a frequency/universality quantifier the source does not assert. R4: not this type for modal/illustrative claims (-> author_framing_or_example) or for a general statement the source makes as background about its own field, restated for the parent field in a background sentence (-> overliteral_wording, optional note 'e.g., in <field>'). The source supporting the same predicate for a narrower subject (one member of the claimed class) is this type, not tangential_source (R6). When explicitly listed items are missing alongside a class/quantifier broadening, scope_overgeneralized is primary and missing_element secondary.",
+   "expected_verdict": "partially_supported",
+   "severity": "major",
+   "pipeline_action": "Flag for author: narrow the wording to the source's population or context, or add a source at the claimed scope.",
+   "report_subsection": "Overgeneralized scope",
+   "legacy_tool_tags": "overgeneralized",
+   "examples": [
+    "'Both oral and intravenous dosing of drug M cause liver toxicity (Ref R).' Ref R tested oral dosing only.",
+    "'Daily stretching consistently prevents running injuries (Ref S).' Ref S: one cohort of military recruits, injury rate down 15%."
+   ],
+   "counts_v49_gold": {
+    "primary_by_gold_label": {
+     "partially_supported": 13
+    },
+    "primary_total": 13,
+    "any_mention": 19
+   }
+  },
+  {
+   "id": "missing_element",
+   "name": "Part of a compound claim has no support",
+   "group": "genuine_problem",
+   "definition": "The core proposition is supported, but a parallel descriptive element of the cited span is absent from the full source and from every co-cited reference: a list item; a named cell type, complication, factor, site or property; one arm of an either/or; an added application, example or context; a further cause, consequence or benefit listed next to a supported sibling; or an earlier clause of a sentence whose single closing citation supports only the final clause (R6).",
+   "decision_rule": "Split the cited span into parallel elements. Assign if >=1 element is supported AND an absent element survives guards 1-2 AND the absent element is not a specific (-> specific_detail_mismatch), not a relation between facts the source discusses or the sole explanation/consequence of a reported finding (-> unsupported_inference, R1), not a class/quantifier broadening (-> scope_overgeneralized), and not the predicate of the clause the citation is attached to (-> tangential_source).",
+   "expected_verdict": "partially_supported",
+   "severity": "minor (R7: major when the absent element is a whole coordinated or subordinate clause/predicate of its own - e.g. ', and often fail to match X', 'or overcome Y' - rather than a list item, name, factor or modifier)",
+   "pipeline_action": "Flag for author: add a citation for the unsupported element or drop it (suggest the bibliography entry that states it).",
+   "report_subsection": "Missing pieces",
+   "legacy_tool_tags": "compound_part_only, overgeneralized",
+   "examples": [
+    "'Smoking raises the risk of lung cancer, stroke and hearing loss (Ref T).' Ref T covers the first two; no co-cited reference mentions hearing loss.",
+    "'The vaccine is given by injection or by nasal spray (Ref U).' Ref U describes injection only; nasal delivery is never mentioned."
+   ],
+   "counts_v49_gold": {
+    "primary_by_gold_label": {
+     "partially_supported": 17
+    },
+    "primary_total": 17,
+    "any_mention": 32
+   }
+  },
+  {
+   "id": "certainty_overstated",
+   "name": "Certainty, strength or outcome upgraded beyond the source",
+   "group": "genuine_problem",
+   "definition": "The claim states the source's proposition more strongly than the source: a tentative or possible finding stated as established ('a possible approach' -> 'solves'; 'might contribute' -> 'drives'); an absolute or exclusive term beyond the data ('guarantees', 'eliminates', 'always', 'exactly', 'alone' when the source credits additional factors); an outcome promoted to a stronger class (slower decline -> reversal; six weeks -> long-term; symptom relief -> cure); or a limitation or contrary result the source reports is dropped.",
+   "decision_rule": "Assign if the source states the same proposition (same subject and relation) but (a) explicitly marks it as uncertain, limited, speculative or future work, or reports counter-data, or (b) the claim's degree word or outcome class exceeds what the results show. Not this type for a one-step hedge on established background, an intensifier the source supports, or the source authors' own conclusion restated (-> overliteral_wording), or when the data show the stronger term (e.g. 'eliminated' when none was detected -> supported). When an untested consequence is also asserted, unsupported_inference is primary (precedence).",
+   "expected_verdict": "partially_supported",
+   "severity": "minor (major when the outcome class is upgraded - cure, reversal, elimination, 'alone' - or contrary data are dropped)",
+   "pipeline_action": "Flag for author: soften to the source's own qualifier (quote the hedge or limitation).",
+   "report_subsection": "Overstated certainty",
+   "legacy_tool_tags": "certainty_overstated (but 20 of its 26 firings on tool partials were gold-supported)",
+   "examples": [
+    "'Coating Q eliminates biofilm on catheters (Ref V).' Ref V: biomass reduced by about 70% in vitro.",
+    "'Drug W cures migraine (Ref W).' Ref W: attack frequency fell from 8 to 5 per month over 12 weeks."
+   ],
+   "counts_v49_gold": {
+    "primary_by_gold_label": {
+     "partially_supported": 4
+    },
+    "primary_total": 4,
+    "any_mention": 19
+   }
+  }
+ ],
+ "precedence": {
+  "step_0_split": "Split the cited span (cited_for narrowed by in-text placement, R6) into elements: facts, specifics, connectives, quantifiers, framing.",
+  "step_1_guards": "For every element the verifier calls absent, mismatched or overstated, apply the guards in order: evidence_gap (guard 1) -> cocited_share (guard 2) -> author_framing_or_example (guard 3) -> overliteral_wording (guard 4). An element that a guard explains is not a problem.",
+  "step_2_primary_genuine": "Primary type = the first genuine type that applies to any surviving element, in this order (most severe first): tangential_source > specific_detail_mismatch > unsupported_inference > scope_overgeneralized > missing_element > certainty_overstated.",
+  "step_3_primary_benign": "R2: if no element survives, the verdict is supported and the misread type (why it LOOKED partial) is the guard that clears the tool's main objection: (1) a numeric or term flag (e.g. problem tag numeric_mismatch) that disappears after normalisation -> evidence_gap, whatever else the tool said; (2) otherwise the guard that clears the objection that kept the verdict partial - the absent or overstated predicate the tool's explanation leads with, not an illustrative 'e.g./such as/like' item, a partner name or a single degree word when a whole predicate is also objected to; (3) if that objection needs two guards, take cocited_share > evidence_gap > author_framing_or_example > overliteral_wording (an element only a co-cited reference states could never be cleared by re-reading this reference). Record every other guard used as a secondary type; one pair can need several guards, so routing is scored against the set (primary + benign secondaries).",
+  "step_4_secondary": "Every other applicable type is recorded as a secondary type (certainty_overstated is most often secondary).",
+  "step_5_verdict": "supported when no genuine element survives; coverage-limited partially_supported when only unverifiable elements remain; not_supported for tangential_source with no proposition supported for the claimed subject, or for an absent bare statistic; otherwise partially_supported. Severity = the primary type's severity (with the per-type escalation rules)."
+ },
+ "rules_v1_1": {
+  "R1": "unsupported_inference vs missing_element: the sole explanation/consequence/lesson attached to a reported finding is an inference (even if its content never appears); a further parallel item next to a supported sibling is a missing element.",
+  "R2": "Misread type for supported pairs: numeric/term artefact first; else the guard clearing the objection that kept the verdict partial; tie cocited_share > evidence_gap > author_framing_or_example > overliteral_wording; score routing on the set.",
+  "R3": "cocited_share beats author_framing_or_example whenever a co-cited reference verifiably states the element (verification in that reference's own pair counts); 3(b) only when no co-cited reference states the general claim.",
+  "R4": "A source's background statement about its own field restated for the parent field is wording (overliteral_wording), not scope; scope needs a moved study result, a source-imposed limit, or an added quantifier.",
+  "R5": "Contradiction split: observable fact (number, outcome, model, usage, material, arm) -> specific_detail_mismatch; evaluation, rationale, purpose or conclusion -> unsupported_inference.",
+  "R6": "tangential_source needs the attached clause's predicate unsupported for every subject; the same predicate for a narrower subject is scope. A single closing citation placed after a final clause it supports is judged on that clause; earlier unsupported clauses are missing_element.",
+  "R7": "missing_element severity: major when a whole coordinated/subordinate clause or predicate is absent; minor for a list item, name, factor or modifier.",
+  "examples": "All examples rewritten to be synthetic and outside the benchmark's domain (v1.0 examples mirrored benchmark cases)."
+ },
+ "flags": {
+  "secondary_source": "the source states the point while citing other work (advice note only; never a partial by itself)",
+  "sibling_paper / author_citation_error": "the specifics are in another paper by the same authors (e.g. 2018a vs 2018b)",
+  "contradicted": "the source states the opposite of an element",
+  "coverage_limited": "partial only because the full text is unavailable (gold_confidence low)",
+  "weak_partial": "tangential_source rated partial because one subsidiary proposition holds",
+  "numeric_artifact": "a numeric flag was an extraction / checker / tagging artefact",
+  "abstract_only / wrong_pdf / scanned_pdf / pdf_not_matched": "coverage problems seen for this pair",
+  "full_text_verified": "the gold labeller read a full text that the tool and/or reviewer did not have",
+  "cc_policy_relabel": "review partial relabelled supported under the cocited_share policy (revert = original_label)",
+  "adjudicated": "review A/B disagreement or remapped/abstract-only pair decided by reading the paper",
+  "reconciled": "the two type labellers disagreed; final type decided in reconciliation",
+  "retracted": "the cited paper is retracted (separate check)"
+ },
+ "report_subsections": [
+  {
+   "title": "Wrong or missing specifics",
+   "types": "specific_detail_mismatch",
+   "severity": "major"
+  },
+  {
+   "title": "Weak or misplaced citation",
+   "types": "tangential_source",
+   "severity": "major"
+  },
+  {
+   "title": "Author's inference attributed to the source",
+   "types": "unsupported_inference",
+   "severity": "major"
+  },
+  {
+   "title": "Overgeneralized scope",
+   "types": "scope_overgeneralized",
+   "severity": "major"
+  },
+  {
+   "title": "Missing pieces",
+   "types": "missing_element",
+   "severity": "minor (major for a whole missing clause)"
+  },
+  {
+   "title": "Overstated certainty",
+   "types": "certainty_overstated",
+   "severity": "minor (major for an upgraded outcome class)"
+  },
+  {
+   "title": "Could not verify (coverage)",
+   "types": "evidence_gap (unresolved)",
+   "severity": "-"
+  },
+  {
+   "title": "Supported with minor note",
+   "types": "evidence_gap (resolved), cocited_share, author_framing_or_example, overliteral_wording",
+   "severity": "-"
+  }
+ ],
+ "legacy_problem_type_map": {
+  "certainty_overstated": "certainty_overstated (only with an explicit source hedge/limitation or a degree word beyond the data)",
+  "overgeneralized": "scope_overgeneralized (only with a population shift of a study result, or an added quantifier)",
+  "compound_part_only": "missing_element (after the cocited_share union check)",
+  "numeric_mismatch": "specific_detail_mismatch (after numeric normalisation)",
+  "not_in_source": "tangential_source (attached predicate absent for every subject) or missing_element (side element absent)",
+  "(new)": "unsupported_inference, evidence_gap, cocited_share, author_framing_or_example, overliteral_wording"
+ },
+ "provenance": "v1.0 grafted from an author-lens and a model-facing draft taxonomy; v1.1 adds rules R1-R7 from reconciling two independent type labellers on refcheck_v49_gold (agreement before reconciliation 129/140, kappa 0.911). Examples are synthetic and contain no benchmark text."
+}

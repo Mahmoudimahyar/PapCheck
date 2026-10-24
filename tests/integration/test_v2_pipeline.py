@@ -1,9 +1,8 @@
 """V2 Integration test: Full pipeline with tiered verification,
 retraction checking, atomic claims, and user overrides."""
 
-import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import docx
 import pytest
@@ -154,7 +153,7 @@ class TestV2Pipeline:
         call_count = 0
 
         async def mock_verify_single(
-            claim: Claim, ref: Reference,
+            claim: Claim, ref: Reference, orch: object = None,
         ) -> VerificationResult:
             nonlocal call_count
             call_count += 1

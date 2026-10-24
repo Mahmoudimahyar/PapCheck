@@ -79,11 +79,9 @@ def _locate_quote(
             char_end=pos + len(quote), match_type=match_type,
         )
 
-    # Fuzzy sliding window search
-    best_pos, best_end, best_score, best_text = _sliding_window_search(
-        quote, section_text,
-    )
-    if best_score >= _MATCH_THRESHOLD:
+    best_pos, best_end, best_score = _best_alignment(quote, section_text)
+    if best_score >= _MATCH_THRESHOLD and best_end > best_pos:
+        best_text = section_text[best_pos:best_end]
         match_type = classify_match(quote, best_text, claim_text, best_score)
         return QuoteHighlight(
             quote=quote, char_start=best_pos,
@@ -93,23 +91,33 @@ def _locate_quote(
     return None
 
 
-def _sliding_window_search(
-    query: str, text: str,
-) -> tuple[int, int, float, str]:
-    """Search for query in text with a sliding window."""
-    window = len(query)
-    best_pos = 0
-    best_score = 0.0
-    for i in range(max(1, len(text) - window + 1)):
-        chunk = text[i:i + window]
-        score = fuzz.ratio(query, chunk) / 100.0
-        if score > best_score:
-            best_score = score
-            best_pos = i
+def _best_alignment(query: str, text: str) -> tuple[int, int, float]:
+    """Best fuzzy placement of query in text: (start, end, similarity 0-1).
 
-    end = min(best_pos + window, len(text))
-    matched_text = text[best_pos:end]
-    return best_pos, end, best_score, matched_text
+    rapidfuzz's partial_ratio_alignment replaces the old per-character
+    sliding window (O(len(text)) ratio calls per quote).
+    """
+    # Lowercasing is only safe for offsets when it preserves string length.
+    q_low, t_low = query.lower(), text.lower()
+    if len(q_low) == len(query) and len(t_low) == len(text):
+        query, text = q_low, t_low
+    alignment = fuzz.partial_ratio_alignment(query, text)
+    if alignment is None:
+        return 0, 0, 0.0
+    start = max(0, min(alignment.dest_start, len(text)))
+    end = max(start, min(alignment.dest_end, len(text)))
+    start, end = snap_to_words(text, start, end)
+    return start, end, alignment.score / 100.0
+
+
+def snap_to_words(text: str, start: int, end: int) -> tuple[int, int]:
+    """Widen [start, end) so it does not cut a word in half (alignment windows
+    have the quote's length, so paraphrases can land mid-word)."""
+    while 0 < start < len(text) and text[start - 1].isalnum() and text[start].isalnum():
+        start -= 1
+    while 0 < end < len(text) and text[end - 1].isalnum() and text[end].isalnum():
+        end += 1
+    return start, end
 
 
 def classify_match(

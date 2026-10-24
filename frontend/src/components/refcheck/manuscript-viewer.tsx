@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useRef } from "react";
 import type { ManuscriptParagraph, ParagraphClaim } from "@/lib/types";
 
 const VERDICT_HIGHLIGHT: Record<string, string> = {
@@ -9,6 +9,7 @@ const VERDICT_HIGHLIGHT: Record<string, string> = {
   not_supported: "bg-red-500/20 hover:bg-red-500/30 dark:bg-red-900/30 dark:hover:bg-red-900/40 border-b-2 border-red-500",
   contradicted: "bg-red-700/20 hover:bg-red-700/30 dark:bg-red-900/40 dark:hover:bg-red-900/50 border-b-2 border-red-700",
   cannot_verify: "bg-gray-400/20 hover:bg-gray-400/30 dark:bg-gray-700/30 dark:hover:bg-gray-700/40 border-b-2 border-gray-400",
+  not_relevant: "bg-violet-500/20 hover:bg-violet-500/30 dark:bg-violet-900/30 dark:hover:bg-violet-900/40 border-b-2 border-violet-500",
   pending: "bg-blue-400/20 hover:bg-blue-400/30 dark:bg-blue-900/30 dark:hover:bg-blue-900/40 border-b-2 border-blue-400",
 };
 
@@ -110,6 +111,7 @@ function highlightParagraph(
     parts.push(
       <span
         key={`c-${claim.claim_id}-${start}`}
+        data-claim-id={claim.claim_id}
         className={`cursor-pointer rounded-sm px-0.5 transition-all ${baseStyle} ${selectedStyle}`}
         onClick={() => onClaimClick(claim.claim_id)}
         title={`Claim #${claim.claim_id}: ${claim.verdict} (${Math.round(claim.confidence * 100)}%)`}

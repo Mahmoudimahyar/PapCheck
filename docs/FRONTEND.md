@@ -392,7 +392,9 @@ async def stream_events(session_id: str):
 ## API Client Pattern
 
 ```typescript
-// lib/api.ts — thin wrapper, no abstraction layers
+// lib/api.ts — thin wrapper, no abstraction layers (V5.8: a barrel re-exporting
+// api-client.ts (API_BASE, fetch helper), api-sessions.ts, api-references.ts,
+// api-results.ts and api-reports.ts; lib/types.ts likewise re-exports the domain type modules)
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 export async function createSession(manuscript: File, pdfs: File[]): Promise<Session> {

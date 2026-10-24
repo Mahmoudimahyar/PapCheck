@@ -7,10 +7,15 @@ from typing import Literal
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from refcheck.stages.resolve_gaps.http_retry import send_with_backoff
+from refcheck.stages.resolve_gaps.markup import strip_markup
+from refcheck.stages.resolve_gaps.title_guard import pick_best_hit
+
 logger = logging.getLogger(__name__)
 
 S2_BASE = "https://api.semanticscholar.org/graph/v1"
 _TIMEOUT = 15.0
+_TITLE_CANDIDATES = 5
 
 
 class S2Result:
@@ -24,6 +29,7 @@ class S2Result:
         authors: list[str] | None = None,
         year: int | None = None,
         doi: str = "",
+        pmid: str = "",
         abstract: str = "",
         oa_url: str = "",
         citation_count: int = 0,
@@ -34,6 +40,7 @@ class S2Result:
         self.authors = authors or []
         self.year = year
         self.doi = doi
+        self.pmid = pmid
         self.abstract = abstract
         self.oa_url = oa_url
         self.citation_count = citation_count
@@ -53,7 +60,7 @@ async def search_by_title(
 
     params = {
         "query": title,
-        "limit": "1",
+        "limit": str(_TITLE_CANDIDATES),
         "fields": "title,year,authors,externalIds,abstract,openAccessPdf,citationCount",
     }
     should_close = client is None
@@ -61,15 +68,16 @@ async def search_by_title(
         client = httpx.AsyncClient(timeout=_TIMEOUT)
 
     try:
-        resp = await client.get(
-            f"{S2_BASE}/paper/search", params=params, headers=headers
-        )
+        http = client
+        resp = await send_with_backoff(lambda: http.get(
+            f"{S2_BASE}/paper/search", params=params, headers=headers,
+        ))
         resp.raise_for_status()
         data = resp.json()
-        papers = data.get("data", [])
-        if not papers:
-            return S2Result(found=False, status="not_found")
-        return _parse_s2_paper(papers[0])
+        papers = [p for p in data.get("data", []) or [] if isinstance(p, dict)]
+        candidates = [_parse_s2_paper(p) for p in papers]
+        best = pick_best_hit(title, [c for c in candidates if c.found], lambda c: c.title)
+        return best or S2Result(found=False, status="not_found")
     except httpx.TimeoutException:
         logger.warning("Semantic Scholar timeout")
         return S2Result(found=False, status="api_error")
@@ -82,12 +90,14 @@ async def search_by_title(
 
 def _parse_s2_paper(paper: dict[str, object]) -> S2Result:
     """Parse a Semantic Scholar paper object."""
-    title = str(paper.get("title", ""))
+    title = strip_markup(str(paper.get("title", "") or ""))
     year_val = paper.get("year")
     year = int(str(year_val)) if year_val is not None else None
 
     ext_ids = paper.get("externalIds", {})
-    doi = str(ext_ids.get("DOI", "")) if isinstance(ext_ids, dict) else ""
+    doi = str(ext_ids.get("DOI", "") or "") if isinstance(ext_ids, dict) else ""
+    pmid = str(ext_ids.get("PubMed", "") or "") if isinstance(ext_ids, dict) else ""
+    abstract = str(paper.get("abstract") or "").strip()
 
     oa_pdf = paper.get("openAccessPdf")
     oa_url = ""
@@ -112,6 +122,8 @@ def _parse_s2_paper(paper: dict[str, object]) -> S2Result:
         authors=authors,
         year=year,
         doi=doi,
+        pmid=pmid,
+        abstract=abstract,
         oa_url=oa_url,
         citation_count=citation_count,
         status="found" if title else "not_found",

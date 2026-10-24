@@ -1,11 +1,11 @@
 """Tests for retraction checking (V2)."""
 
-import httpx
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
+import pytest
+
 from refcheck.stages.resolve_gaps.retraction_client import (
-    RetractionStatus,
     check_retraction_status,
 )
 
@@ -87,7 +87,7 @@ class TestRetractionClient:
 
     @pytest.mark.asyncio
     async def test_api_error(self) -> None:
-        """API error -> status stays ok (graceful fallback)."""
+        """API error -> unknown: "couldn't check" is not "checked and clean"."""
         client = AsyncMock(spec=httpx.AsyncClient)
         client.get = AsyncMock(
             side_effect=httpx.TimeoutException("timeout"),
@@ -96,8 +96,8 @@ class TestRetractionClient:
         result = await check_retraction_status(
             "10.1234/test", None, None, client,
         )
-        # With only crossref failing, falls back to "No retraction info found"
-        assert result.status == "ok"
+        assert result.status == "unknown"
+        assert "failed" in result.detail
 
     @pytest.mark.asyncio
     async def test_no_doi_no_pmid(self) -> None:

@@ -1,14 +1,32 @@
-"""OCR fallback for scanned/image-based PDF pages."""
+"""OCR fallback for scanned/image-based PDF pages.
 
+pytesseract ships no type information, so it is loaded through a typed wrapper
+(``_tesseract``: the one call used, as a Protocol) instead of an untyped import.
+"""
+
+import importlib
 import logging
 from pathlib import Path
+from typing import Protocol, cast
 
 import fitz
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
 _MIN_TEXT_CHARS = 50
 _OCR_DPI = 300
+
+
+class _Tesseract(Protocol):
+    """The part of the pytesseract module this extractor uses."""
+
+    def image_to_string(self, image: Image.Image) -> str: ...
+
+
+def _tesseract() -> _Tesseract:
+    """The pytesseract module (ImportError when it is not installed)."""
+    return cast("_Tesseract", importlib.import_module("pytesseract"))
 
 
 def extract_text_with_ocr_fallback(pdf_path: Path) -> str:
@@ -30,16 +48,13 @@ def extract_text_with_ocr_fallback(pdf_path: Path) -> str:
     return "\n\n".join(full_text)
 
 
-def _try_ocr_page(page: object) -> str | None:
+def _try_ocr_page(page: fitz.Page) -> str | None:
     """Attempt OCR on an image-based page. Graceful if pytesseract missing."""
     try:
-        import pytesseract
-        from PIL import Image
-
-        pix = page.get_pixmap(dpi=_OCR_DPI)  # type: ignore[attr-defined]
+        tesseract = _tesseract()
+        pix = page.get_pixmap(dpi=_OCR_DPI)
         img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-        result: str = pytesseract.image_to_string(img).strip()
-        return result
+        return tesseract.image_to_string(img).strip()
     except ImportError:
         logger.warning("pytesseract not installed, skipping OCR")
         return None

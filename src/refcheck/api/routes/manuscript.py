@@ -26,6 +26,7 @@ from refcheck.db.deps import get_db
 from refcheck.db.reference_repo import get_all_references
 from refcheck.db.session_repo import get_session
 from refcheck.db.verification_repo import get_all_verifications
+from refcheck.stages.generate_report.claim_signals import claim_signals
 
 if TYPE_CHECKING:
     from sqlmodel import Session as DBSession
@@ -98,6 +99,7 @@ async def get_evidence(
             priority=claim.priority,
             atomic_claims=claim.atomic_claims,
             location=claim.location,
+            signals=claim_signals(claim),
         ),
         verifications=ev_list,
     )

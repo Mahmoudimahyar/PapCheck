@@ -131,3 +131,30 @@ class TestClassifyMatch:
     def test_absent_low_similarity(self) -> None:
         result = classify_match("q", "different", "claim", 0.50)
         assert result == "absent"
+
+
+class TestAlignment:
+    """V5: rapidfuzz alignment replaces the per-character sliding window."""
+
+    def test_fuzzy_quote_positions_cover_match(self) -> None:
+        text = "Intro. The experimental treatment significantly reduced cardiac events. End."
+        quote = "experimental treatment significantly reduce cardiac events"
+        section = build_evidence_sections([text], ["Results"], [quote], text, "claim")[0]
+        highlight = section.quote_highlights[0]
+        located = text[highlight.char_start:highlight.char_end]
+        assert "experimental treatment" in located and "cardiac event" in located
+
+    def test_case_insensitive_match(self) -> None:
+        text = "RESULTS: DRUG X REDUCED MORTALITY IN ELDERLY PATIENTS."
+        section = build_evidence_sections(
+            [text], ["Results"], ["drug x reduced mortality"], text, "claim",
+        )[0]
+        assert len(section.quote_highlights) == 1
+        assert section.quote_highlights[0].match_type == "direct"
+
+    def test_long_section_is_fast(self) -> None:
+        text = "Unrelated filler about other topics entirely. " * 3000 + "Key finding: 28% lower."
+        section = build_evidence_sections(
+            [text], ["Results"], ["Key finding: 28% lower"], text, "claim",
+        )[0]
+        assert section.quote_highlights[0].char_start == text.index("Key finding")

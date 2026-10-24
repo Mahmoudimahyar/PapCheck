@@ -1,9 +1,6 @@
 """Unit tests for PDF DOI matching."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 from refcheck.models.reference import Reference
 from refcheck.stages.match_pdfs.doi_matcher import extract_doi_from_pdf, match_by_doi

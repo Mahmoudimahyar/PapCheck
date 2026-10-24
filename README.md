@@ -44,8 +44,9 @@ cd frontend && npm install && npm run dev
 ### Environment Variables
 ```bash
 # .env file in project root
-ANTHROPIC_API_KEY=sk-ant-...          # Required for LLM verification
-OPENAI_API_KEY=sk-...                 # Optional (multi-model voting in V2)
+OPENAI_API_KEY=sk-...                 # Required (screen, cross-check, embeddings, utility)
+ANTHROPIC_API_KEY=sk-ant-...          # Required (verifier, judge); ANTHROPIC_API_KEY_BACKUP is tried next
+# Role/model overrides (REFCHECK_<ROLE>_MODEL etc.): see .env.example
 SEMANTIC_SCHOLAR_API_KEY=...          # Optional (higher rate limits)
 NCBI_API_KEY=...                      # Optional (higher PubMed rate limits)
 UNPAYWALL_EMAIL=your@email.com        # Required for Unpaywall API

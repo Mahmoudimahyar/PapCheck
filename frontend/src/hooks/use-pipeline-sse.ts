@@ -5,14 +5,16 @@ import { getEventsUrl } from "@/lib/api";
 import { connectSSE } from "@/lib/sse";
 import type { PipelineEvent, StageStatus } from "@/lib/types";
 
+const ETA_SMOOTHING = 0.3;
+
 const INITIAL_STAGES: StageStatus[] = [
-  { stage: 1, name: "Parse Manuscript", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
-  { stage: 2, name: "Detect Citations", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
-  { stage: 3, name: "Match PDFs", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
-  { stage: 4, name: "Resolve Gaps", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
-  { stage: 5, name: "Verify Claims", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
-  { stage: 6, name: "Missing Citations", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
-  { stage: 7, name: "Generate Report", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, message: "" },
+  { stage: 1, name: "Parse Manuscript", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, progress_percent: 0, progress_rate: 0, progress_eta: 0, message: "" },
+  { stage: 2, name: "Detect Citations", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, progress_percent: 0, progress_rate: 0, progress_eta: 0, message: "" },
+  { stage: 3, name: "Match PDFs", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, progress_percent: 0, progress_rate: 0, progress_eta: 0, message: "" },
+  { stage: 4, name: "Resolve Gaps", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, progress_percent: 0, progress_rate: 0, progress_eta: 0, message: "" },
+  { stage: 5, name: "Verify Claims", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, progress_percent: 0, progress_rate: 0, progress_eta: 0, message: "" },
+  { stage: 6, name: "Missing Citations", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, progress_percent: 0, progress_rate: 0, progress_eta: 0, message: "" },
+  { stage: 7, name: "Generate Report", status: "pending", elapsed_seconds: 0, progress_current: 0, progress_total: 0, progress_percent: 0, progress_rate: 0, progress_eta: 0, message: "" },
 ];
 
 export function usePipelineSSE(sessionId: string) {
@@ -21,6 +23,18 @@ export function usePipelineSSE(sessionId: string) {
   const [interventionCount, setInterventionCount] = useState(0);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const closeRef = useRef<(() => void) | null>(null);
+  const smoothedEtas = useRef<Record<number, number>>({});
+
+  const smoothEta = useCallback((stage: number, rawEta: number): number => {
+    const prev = smoothedEtas.current[stage];
+    if (prev === undefined || prev === 0) {
+      smoothedEtas.current[stage] = rawEta;
+      return rawEta;
+    }
+    const smoothed = ETA_SMOOTHING * rawEta + (1 - ETA_SMOOTHING) * prev;
+    smoothedEtas.current[stage] = smoothed;
+    return smoothed;
+  }, []);
 
   const handleEvent = useCallback((event: PipelineEvent) => {
     setIsReconnecting(false);
@@ -49,18 +63,23 @@ export function usePipelineSSE(sessionId: string) {
       setStages((prev) =>
         prev.map((s) => {
           if (s.stage !== event.stage) return s;
+          const rawEta = event.progress?.estimated_remaining_seconds ?? s.progress_eta;
+          const eta = rawEta > 0 ? smoothEta(event.stage, rawEta) : 0;
           return {
             ...s,
             status: event.status === "pipeline_complete" ? "complete" : event.status,
             elapsed_seconds: event.elapsed_seconds ?? s.elapsed_seconds,
             progress_current: event.progress?.current ?? s.progress_current,
             progress_total: event.progress?.total ?? s.progress_total,
+            progress_percent: event.progress?.percent ?? s.progress_percent,
+            progress_rate: event.progress?.rate ?? s.progress_rate,
+            progress_eta: eta,
             message: event.message ?? s.message,
           };
         })
       );
     }
-  }, []);
+  }, [smoothEta]);
 
   const handleError = useCallback(() => {
     setIsReconnecting(true);

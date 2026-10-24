@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import fitz
-import pytest
 
 from refcheck.models.reference import Reference
 from refcheck.stages.match_pdfs.title_matcher import (

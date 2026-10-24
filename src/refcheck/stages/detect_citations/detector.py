@@ -12,12 +12,10 @@ from refcheck.stages.detect_citations.author_year_detector import (
 from refcheck.stages.detect_citations.compound_splitter import (
     split_compound_citation,
 )
+from refcheck.stages.detect_citations.local_context import add_context
 from refcheck.stages.detect_citations.numbered_detector import (
     detect_numbered_bracket,
     detect_numbered_superscript,
-)
-from refcheck.stages.detect_citations.sentence_splitter import (
-    extract_sentence_context,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,11 +23,24 @@ logger = logging.getLogger(__name__)
 _BRACKET_RE = re.compile(r"\[\d+")
 _AUTHOR_YEAR_RE = re.compile(r"\([A-Z][a-z]+.*?\d{4}")
 
+_REQUIRED_FIELDS = {"paragraph_text", "sentence_text", "sentence_start", "sentence_end"}
+
+
+def _verify_citation_model() -> None:
+    """Fail fast if CitationInstance is stale (missing expected fields)."""
+    missing = _REQUIRED_FIELDS - set(CitationInstance.model_fields)
+    if missing:
+        raise RuntimeError(
+            f"CitationInstance model STALE — missing: {missing}. "
+            "Clear __pycache__ and restart.",
+        )
+
 
 def detect_all_citations(
     manuscript: ParsedManuscript,
 ) -> list[CitationInstance]:
     """Find every citation in the manuscript. Deterministic, no LLM."""
+    _verify_citation_model()  # Fail fast if model is broken
     paragraphs = _flatten_paragraphs(manuscript)
     style = detect_citation_style(paragraphs)
     logger.info("Detected citation style: %s (%d paragraphs)", style, len(paragraphs))
@@ -45,25 +56,22 @@ def detect_all_citations(
     for cit in raw_citations:
         expanded.extend(split_compound_citation(cit))
 
-    # Add sentence context
+    # Add sentence + local paragraph context via model_copy (Pydantic-safe)
     para_map = {idx: text for idx, text, _ in paragraphs}
-    for cit in expanded:
-        text = para_map.get(cit.paragraph_index, "")
-        sent, s_start, s_end = extract_sentence_context(
-            text, cit.char_start, cit.char_end,
-        )
-        cit.sentence_text = sent
-        cit.sentence_start = s_start
-        cit.sentence_end = s_end
+    contextualized = [
+        add_context(cit, para_map.get(cit.paragraph_index, ""))
+        for cit in expanded
+    ]
 
-    deduped = _deduplicate(expanded)
+    deduped = _deduplicate(contextualized)
 
-    # Assign sequential IDs
+    # Assign sequential IDs via model_copy
+    numbered: list[CitationInstance] = []
     for i, cit in enumerate(deduped, 1):
-        cit.id = i
+        numbered.append(cit.model_copy(update={"id": i}))
 
-    logger.info("Found %d citations (style=%s)", len(deduped), style)
-    return deduped
+    logger.info("Found %d citations (style=%s)", len(numbered), style)
+    return numbered
 
 
 def detect_in_paragraph(
@@ -75,15 +83,8 @@ def detect_in_paragraph(
     expanded: list[CitationInstance] = []
     for cit in raw:
         expanded.extend(split_compound_citation(cit))
-    # Add sentence context
-    for cit in expanded:
-        sent, s_start, s_end = extract_sentence_context(
-            text, cit.char_start, cit.char_end,
-        )
-        cit.sentence_text = sent
-        cit.sentence_start = s_start
-        cit.sentence_end = s_end
-    return _deduplicate(expanded)
+    # Add sentence + local paragraph context via model_copy (Pydantic-safe)
+    return _deduplicate([add_context(cit, text) for cit in expanded])
 
 
 def _detect_in_paragraph(
@@ -135,10 +136,9 @@ def _detect_style_for_text(text: str) -> str:
 def _flatten_paragraphs(
     manuscript: ParsedManuscript,
 ) -> list[tuple[int, str, str]]:
-    """Flatten manuscript sections into (index, text, heading) tuples.
+    """Flatten sections into (index, text, heading) tuples.
 
-    IMPORTANT: Uses the same double-newline split as the viewer
-    (manuscript_helpers._split_text) so paragraph_index values match.
+    Uses same double-newline split as manuscript_helpers._split_text.
     """
     result: list[tuple[int, str, str]] = []
     para_idx = 0
@@ -154,11 +154,7 @@ def _flatten_paragraphs(
 
 
 def _split_section_text(text: str) -> list[str]:
-    """Split section text into paragraphs on double-newline boundaries.
-
-    Must match manuscript_helpers._split_text exactly so paragraph
-    indices are consistent between detection and the viewer.
-    """
+    """Split section text into paragraphs on double-newline boundaries."""
     if not text.strip():
         return []
     parts = re.split(r"\n\s*\n", text)

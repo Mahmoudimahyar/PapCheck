@@ -1,6 +1,5 @@
 """Tests for missing citation detection."""
 
-from refcheck.models.citation import CitationInstance, MissingCitation
 from refcheck.models.reference import ManuscriptSection, ParsedManuscript
 from refcheck.stages.detect_citations.missing_citation_detector import (
     detect_missing_citations,

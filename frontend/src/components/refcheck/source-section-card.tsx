@@ -13,7 +13,7 @@ const MATCH_STYLES: Record<string, string> = {
   direct: "underline decoration-green-500 decoration-2 bg-green-500/10 dark:bg-green-900/30",
   paraphrased: "underline decoration-dashed decoration-amber-500 decoration-2 bg-amber-500/10 dark:bg-amber-900/30",
   numeric_mismatch: "underline decoration-wavy decoration-red-500 decoration-2 bg-red-500/10 dark:bg-red-900/30",
-  absent: "line-through text-red-500",
+  absent: "line-through text-red-600 dark:text-red-400",
 };
 
 const MATCH_ICONS: Record<string, string> = {

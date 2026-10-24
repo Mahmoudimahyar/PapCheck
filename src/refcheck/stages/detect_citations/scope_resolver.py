@@ -5,6 +5,11 @@ import re
 from itertools import groupby
 
 from refcheck.models.citation import CitationInstance, VerificationUnit
+from refcheck.stages.detect_citations.cited_for import (
+    cited_for_or_scope,
+    compute_cited_for,
+)
+from refcheck.stages.detect_citations.claim_quality import assess_claim_quality
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +28,32 @@ def resolve_scopes(
 
     for _key, group_iter in groupby(sorted_cits, key=keyfunc):
         group = list(group_iter)
-        if len(group) == 1:
-            units.append(_resolve_single(group[0]))
-        else:
-            units.extend(_resolve_multi(group))
+        co_cited = _co_cited_count(group)
+        resolved = (
+            [_resolve_single(group[0])] if len(group) == 1 else _resolve_multi(group)
+        )
+        # extracted_claim stays the whole scope; cited_for narrows per marker
+        clauses = compute_cited_for(group)
+        quality = assess_claim_quality(group[0].sentence_text)
+        units.extend(
+            u.model_copy(update={
+                "co_cited_count": co_cited, "claim_quality": quality,
+                "cited_for": cited_for_or_scope(clause, u.scope_text),
+            })
+            for u, clause in zip(resolved, clauses, strict=True)
+        )
 
-    # Assign IDs
-    for i, unit in enumerate(units, 1):
-        unit.id = i
+    # Assign IDs via model_copy (Pydantic-safe, no direct mutation)
+    return [
+        unit.model_copy(update={"id": i})
+        for i, unit in enumerate(units, 1)
+    ]
 
-    return units
+
+def _co_cited_count(group: list[CitationInstance]) -> int:
+    """Distinct references cited in one sentence (compound markers expanded)."""
+    ref_ids = {c.reference_id for c in group if c.reference_id is not None}
+    return max(1, len(ref_ids))
 
 
 def _resolve_single(cit: CitationInstance) -> VerificationUnit:
@@ -92,6 +113,38 @@ def _remove_citation_markers(text: str) -> str:
     return cleaned.strip().rstrip(".")
 
 
+def _has_keyword(text_lower: str, words: tuple[str, ...]) -> bool:
+    """Word-boundary keyword match.
+
+    Plain substring tests misfire ("is a" inside "this approach", "using"
+    inside "focusing"). Phrases need boundaries on both sides; single words
+    only at the start so simple inflections ("methods") still match.
+    """
+    for word in words:
+        suffix = r"\b" if " " in word else ""
+        if re.search(rf"\b{re.escape(word)}{suffix}", text_lower):
+            return True
+    return False
+
+
+_CONTRAST_WORDS = (
+    "unlike", "in contrast", "whereas", "however",
+    "conversely", "although", "contrary",
+)
+_ATTRIBUTION_WORDS = (
+    "showed", "demonstrated", "found", "reported",
+    "observed", "concluded", "suggested",
+)
+_METHOD_WORDS = (
+    "using", "method", "protocol", "technique",
+    "procedure", "approach", "performed",
+)
+_BACKGROUND_WORDS = (
+    "is a", "are characterized", "is defined",
+    "is known", "are widely", "has been",
+)
+
+
 def classify_claim_type(
     scope_text: str, is_narrative: bool,
 ) -> tuple[str, str]:
@@ -104,36 +157,13 @@ def classify_claim_type(
     if re.search(r"n\s*=\s*\d+", scope_text, re.IGNORECASE):
         return "factual", "high"
 
-    # Contrast words → contrast, high
-    contrast_words = [
-        "unlike", "in contrast", "whereas", "however",
-        "conversely", "although", "contrary",
-    ]
-    if any(w in text_lower for w in contrast_words):
+    if _has_keyword(text_lower, _CONTRAST_WORDS):
         return "contrast", "high"
-
-    # Attribution → attribution, medium
-    attr_words = [
-        "showed", "demonstrated", "found", "reported",
-        "observed", "concluded", "suggested",
-    ]
-    if is_narrative or any(w in text_lower for w in attr_words):
+    if is_narrative or _has_keyword(text_lower, _ATTRIBUTION_WORDS):
         return "attribution", "medium"
-
-    # Methodology → methodological, medium
-    meth_words = [
-        "using", "method", "protocol", "technique",
-        "procedure", "approach", "performed",
-    ]
-    if any(w in text_lower for w in meth_words):
+    if _has_keyword(text_lower, _METHOD_WORDS):
         return "methodological", "medium"
-
-    # Background → background, low
-    bg_words = [
-        "is a", "are characterized", "is defined",
-        "is known", "are widely", "has been",
-    ]
-    if any(w in text_lower for w in bg_words):
+    if _has_keyword(text_lower, _BACKGROUND_WORDS):
         return "background", "low"
 
     return "factual", "medium"
@@ -146,6 +176,7 @@ def _build_unit(
     """Build a VerificationUnit from a citation and scope."""
     return VerificationUnit(
         manuscript_text=cit.sentence_text,
+        paragraph_text=cit.paragraph_text,
         scope_text=scope,
         citation_marker=cit.raw_marker,
         paragraph_index=cit.paragraph_index,
@@ -158,4 +189,6 @@ def _build_unit(
         is_narrative=cit.is_narrative,
         claim_type=claim_type,  # type: ignore[arg-type]
         priority=priority,  # type: ignore[arg-type]
+        mapping_ambiguous=cit.mapping_ambiguous,
+        candidate_reference_ids=list(cit.candidate_reference_ids),
     )

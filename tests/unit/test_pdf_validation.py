@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import fitz
-import pytest
 
 from refcheck.stages.match_pdfs.pdf_validator import (
     score_pdf_url,

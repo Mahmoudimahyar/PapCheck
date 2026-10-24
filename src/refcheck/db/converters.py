@@ -1,7 +1,12 @@
-"""Convert between Pydantic domain models and SQLModel DB models."""
+"""Convert between Pydantic domain models and SQLModel DB models.
+
+Readers coalesce NULLs from columns added by later migrations so rows
+written by older versions still load (see ``or_default``).
+"""
 
 import json
 from pathlib import Path
+from typing import Literal
 
 from refcheck.db.event_converters import (
     db_to_event,
@@ -9,17 +14,30 @@ from refcheck.db.event_converters import (
     event_to_db,
     session_to_db,
 )
-from refcheck.db.models import ClaimDB, ReferenceDB, VerificationDB
-from refcheck.models.claim import Claim
-from refcheck.models.evidence import ClaimLocation, EvidenceSection
+from refcheck.db.models import ClaimDB, ReferenceDB
+from refcheck.db.verification_converters import (
+    db_to_verification,
+    load_json_list,
+    or_default,
+    verification_to_db,
+)
+from refcheck.models.claim import Claim, ClaimQuality
+from refcheck.models.evidence import ClaimLocation
+from refcheck.models.open_access import (
+    OA_FIELDS,
+    OpenAccessHint,
+    ReferenceWithAccess,
+    access_hint_of,
+    with_access_hint,
+)
 from refcheck.models.reference import Reference
-from refcheck.models.verification import AtomicVerification, VerificationResult
 
 __all__ = [
     "claim_to_db",
     "db_to_claim",
     "db_to_event",
     "db_to_reference",
+    "db_to_reference_with_access",
     "db_to_session",
     "db_to_verification",
     "event_to_db",
@@ -41,6 +59,7 @@ def reference_to_db(ref: Reference, session_id: str) -> ReferenceDB:
         doi=ref.doi,
         journal=ref.journal,
         pmid=ref.pmid,
+        pmc_id=ref.pmc_id,
         volume=ref.volume,
         pages=ref.pages,
         url=ref.url,
@@ -52,6 +71,15 @@ def reference_to_db(ref: Reference, session_id: str) -> ReferenceDB:
         retraction_detail=ref.retraction_detail,
         duplicate_of=ref.duplicate_of,
         is_supplementary=ref.is_supplementary,
+        raw_text_original=ref.raw_text_original,
+        repair_applied=ref.repair_applied,
+        reference_type=ref.reference_type,
+        abstract_text=ref.abstract_text,
+        abstract_source=ref.abstract_source,
+        identity_status=ref.identity_status,
+        year_suffix=ref.year_suffix,
+        replaced_upload_reason=ref.replaced_upload_reason,
+        **access_hint_of(ref).model_dump(include=set(OA_FIELDS)),
     )
 
 
@@ -66,6 +94,7 @@ def db_to_reference(db_ref: ReferenceDB) -> Reference:
         doi=db_ref.doi,
         journal=db_ref.journal,
         pmid=db_ref.pmid,
+        pmc_id=db_ref.pmc_id,
         volume=db_ref.volume,
         pages=db_ref.pages,
         url=db_ref.url,
@@ -77,7 +106,29 @@ def db_to_reference(db_ref: ReferenceDB) -> Reference:
         retraction_detail=db_ref.retraction_detail,
         duplicate_of=db_ref.duplicate_of,
         is_supplementary=db_ref.is_supplementary,
+        raw_text_original=or_default(db_ref.raw_text_original, ""),
+        repair_applied=or_default(db_ref.repair_applied, "none"),
+        reference_type=or_default(db_ref.reference_type, "journal_article"),
+        abstract_text=db_ref.abstract_text,
+        abstract_source=db_ref.abstract_source,
+        identity_status=_identity_status(db_ref.identity_status),
+        year_suffix=db_ref.year_suffix or None,
+        replaced_upload_reason=db_ref.replaced_upload_reason or None,
     )
+
+
+def db_to_reference_with_access(db_ref: ReferenceDB) -> ReferenceWithAccess:
+    """A ReferenceDB row with its free-full-text hint (references API)."""
+    hint = OpenAccessHint(**{name: getattr(db_ref, name, None) for name in OA_FIELDS})
+    return with_access_hint(db_to_reference(db_ref), hint)
+
+
+def _identity_status(raw: str | None) -> Literal["verified", "unverified", "mismatch"]:
+    if raw == "verified":
+        return "verified"
+    if raw == "mismatch":
+        return "mismatch"
+    return "unverified"  # also NULL rows written before the V5 migration
 
 
 def claim_to_db(claim: Claim, session_id: str) -> ClaimDB:
@@ -89,6 +140,7 @@ def claim_to_db(claim: Claim, session_id: str) -> ClaimDB:
         session_id=session_id,
         claim_number=claim.id,
         manuscript_text=claim.manuscript_text,
+        paragraph_text=claim.paragraph_text,
         extracted_claim=claim.extracted_claim,
         claim_type=claim.claim_type,
         reference_ids_json=json.dumps(claim.reference_ids),
@@ -96,6 +148,11 @@ def claim_to_db(claim: Claim, session_id: str) -> ClaimDB:
         section_heading=claim.section_heading,
         atomic_claims_json=json.dumps(claim.atomic_claims),
         location_json=location_json,
+        co_cited_count=claim.co_cited_count,
+        cited_for=claim.cited_for,
+        claim_quality=claim.claim_quality,
+        mapping_ambiguous=claim.mapping_ambiguous,
+        candidate_reference_ids_json=json.dumps(claim.candidate_reference_ids),
     )
 
 
@@ -107,6 +164,7 @@ def db_to_claim(db_claim: ClaimDB) -> Claim:
     return Claim(
         id=db_claim.claim_number,
         manuscript_text=db_claim.manuscript_text,
+        paragraph_text=or_default(db_claim.paragraph_text, ""),
         extracted_claim=db_claim.extracted_claim,
         claim_type=db_claim.claim_type,  # type: ignore[arg-type]
         reference_ids=json.loads(db_claim.reference_ids_json),
@@ -114,67 +172,17 @@ def db_to_claim(db_claim: ClaimDB) -> Claim:
         section_heading=db_claim.section_heading,
         atomic_claims=json.loads(db_claim.atomic_claims_json),
         location=location,
+        co_cited_count=max(1, or_default(db_claim.co_cited_count, 1)),
+        cited_for=or_default(db_claim.cited_for, ""),
+        claim_quality=_claim_quality(db_claim.claim_quality),
+        mapping_ambiguous=bool(db_claim.mapping_ambiguous),
+        candidate_reference_ids=[
+            i for i in load_json_list(db_claim.candidate_reference_ids_json,
+                                      "candidate_reference_ids_json")
+            if isinstance(i, int)
+        ],
     )
 
 
-def verification_to_db(v: VerificationResult, session_id: str) -> VerificationDB:
-    """Convert a Pydantic VerificationResult to a VerificationDB row."""
-    atomic_json = None
-    if v.atomic_results is not None:
-        atomic_json = json.dumps([a.model_dump() for a in v.atomic_results])
-    evidence_sections_json = None
-    if v.evidence_sections:
-        evidence_sections_json = json.dumps(
-            [s.model_dump() for s in v.evidence_sections]
-        )
-
-    return VerificationDB(
-        session_id=session_id,
-        claim_id=v.claim_id,
-        reference_id=v.reference_id,
-        verdict=v.verdict,
-        confidence=v.confidence,
-        evidence_quotes_json=json.dumps(v.evidence_quotes),
-        reasoning=v.reasoning,
-        tier=v.tier,
-        source_coverage=v.source_coverage,
-        needs_user_review=v.needs_user_review,
-        user_override=v.user_override,
-        user_override_reason=v.user_override_reason,
-        original_verdict=v.original_verdict,
-        original_confidence=v.original_confidence,
-        atomic_results_json=atomic_json,
-        evidence_sections_json=evidence_sections_json,
-    )
-
-
-def db_to_verification(db_v: VerificationDB) -> VerificationResult:
-    """Convert a VerificationDB row to a Pydantic VerificationResult."""
-    atomic_results = None
-    if db_v.atomic_results_json:
-        raw = json.loads(db_v.atomic_results_json)
-        atomic_results = [AtomicVerification(**a) for a in raw]
-    evidence_sections: list[EvidenceSection] = []
-    if db_v.evidence_sections_json:
-        raw_sections = json.loads(db_v.evidence_sections_json)
-        evidence_sections = [EvidenceSection(**s) for s in raw_sections]
-
-    return VerificationResult(
-        claim_id=db_v.claim_id,
-        reference_id=db_v.reference_id,
-        verdict=db_v.verdict,  # type: ignore[arg-type]
-        confidence=db_v.confidence,
-        evidence_quotes=json.loads(db_v.evidence_quotes_json),
-        reasoning=db_v.reasoning,
-        tier=db_v.tier,
-        source_coverage=db_v.source_coverage,  # type: ignore[arg-type]
-        needs_user_review=db_v.needs_user_review,
-        user_override=db_v.user_override,
-        user_override_reason=db_v.user_override_reason,
-        original_verdict=db_v.original_verdict,  # type: ignore[arg-type]
-        original_confidence=db_v.original_confidence,
-        atomic_results=atomic_results,
-        evidence_sections=evidence_sections,
-    )
-
-
+def _claim_quality(raw: str | None) -> ClaimQuality:
+    return "fragment" if raw == "fragment" else "ok"  # NULL rows predate V5.2

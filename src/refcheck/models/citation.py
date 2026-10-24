@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from refcheck.models.claim import ClaimQuality
+
 CitationStyle = Literal[
     "author_year_parenthetical",
     "author_year_narrative",
@@ -44,6 +46,7 @@ class CitationInstance(BaseModel):
 
     # Context
     sentence_text: str = ""
+    paragraph_text: str = ""
     sentence_start: int = 0
     sentence_end: int = 0
     is_narrative: bool = False
@@ -53,6 +56,10 @@ class CitationInstance(BaseModel):
     reference_title: str = ""
     mapping_confidence: float = 0.0
     mapping_method: str = ""
+    # Several references fit this citation and no evidence picked one;
+    # reference_id is the best guess, candidate_reference_ids lists them all.
+    mapping_ambiguous: bool = False
+    candidate_reference_ids: list[int] = Field(default_factory=list)
 
 
 class VerificationUnit(BaseModel):
@@ -62,6 +69,7 @@ class VerificationUnit(BaseModel):
 
     # What to verify
     manuscript_text: str
+    paragraph_text: str = ""
     scope_text: str
     citation_marker: str
 
@@ -82,6 +90,13 @@ class VerificationUnit(BaseModel):
     claim_type: ClaimType = "factual"
     priority: Priority = "medium"
     atomic_claims: list[str] = Field(default_factory=list)
+    # V5: distinct references cited in the same sentence (1 = cited alone)
+    co_cited_count: int = Field(default=1, ge=1)
+    # Clause this reference is cited for (== scope_text when it covers it all)
+    cited_for: str = ""
+    claim_quality: ClaimQuality = "ok"
+    mapping_ambiguous: bool = False
+    candidate_reference_ids: list[int] = Field(default_factory=list)
 
     @property
     def extracted_claim(self) -> str:

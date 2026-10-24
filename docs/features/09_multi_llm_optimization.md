@@ -1,5 +1,10 @@
 # Feature 09: Multi-LLM Cost Optimization, PDF Resolution & Viewer UX
 
+> **Superseded (V5).** The tiered multi-model voting described here (Gemini 2.0 / NVIDIA NIM / Grok 3 /
+> Sonnet 4.5 tiers, `VerificationOrchestrator`, `tier_budget`) was removed in the V5 "screen → verify →
+> judge" cascade. See `docs/ARCHITECTURE.md` (V5 cascade) and `src/refcheck/llm/model_registry.py`
+> for the current roles and models. Kept for history only.
+
 **Priority:** High
 **Dependencies:** Feature 08 (Citation-First Verification)
 

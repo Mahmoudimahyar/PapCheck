@@ -5,6 +5,11 @@ import re
 
 from refcheck.models.reference import Reference
 from refcheck.stages.parse_docx.author_parser import parse_authors_title
+from refcheck.stages.parse_docx.reference_repairer import (
+    repair_reference_list,
+    summarize_repairs,
+)
+from refcheck.stages.parse_docx.year_parser import extract_year_info
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +48,6 @@ _PMID_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Year pattern
-_YEAR_PATTERN = re.compile(r"\b((?:19|20)\d{2})\b")
-
-
 def is_reference_heading(text: str) -> bool:
     """Check if the given text looks like a reference section heading."""
     return bool(_HEADING_KEYWORDS.match(text.strip()))
@@ -77,31 +78,61 @@ def extract_pmid(text: str) -> str | None:
 
 
 def extract_year(text: str) -> int | None:
-    """Extract publication year from reference text."""
-    matches = _YEAR_PATTERN.findall(text)
-    for year_str in matches:
-        year = int(year_str)
-        if 1900 <= year <= 2030:
-            return year
-    return None
+    """Extract publication year from reference text ("(2018b)" -> 2018)."""
+    return extract_year_info(text).year
 
 
-def parse_single_reference(ref_id: int, raw_text: str) -> Reference:
+def parse_single_reference(
+    ref_id: int,
+    raw_text: str,
+    raw_text_original: str = "",
+    repair_applied: str = "none",
+) -> Reference:
     """Parse a single raw reference string into a Reference model."""
     doi = extract_doi(raw_text)
     pmid = extract_pmid(raw_text)
-    year = extract_year(raw_text)
+    year_info = extract_year_info(raw_text)
     authors, title = parse_authors_title(raw_text)
 
     return Reference(
         id=ref_id,
         raw_text=raw_text.strip(),
+        raw_text_original=raw_text_original or raw_text.strip(),
+        repair_applied=repair_applied,
         title=title,
         authors=authors,
-        year=year,
+        year=year_info.year,
+        year_suffix=year_info.suffix,
         doi=doi,
         pmid=pmid,
     )
+
+
+def parse_references_with_repair(raw_entries: list[str]) -> list[Reference]:
+    """Parse raw reference entries with repair pass applied first."""
+    repaired = repair_reference_list(raw_entries)
+    logger.info(summarize_repairs(repaired))
+
+    refs: list[Reference] = []
+    for idx, entry in enumerate(repaired, start=1):
+        ref = parse_single_reference(
+            ref_id=idx,
+            raw_text=entry.text,
+            raw_text_original=entry.text if entry.repair_type == "none" else "",
+            repair_applied=entry.repair_type,
+        )
+        refs.append(ref)
+
+    # Second pass: detect and fix bad titles via heuristics
+    from refcheck.stages.parse_docx.title_repairer import (
+        detect_and_repair_bad_titles,
+    )
+
+    needs_llm = detect_and_repair_bad_titles(refs)
+    if needs_llm:
+        logger.info("%d titles need LLM repair", len(needs_llm))
+
+    return refs
 
 
 def split_reference_section(text: str) -> list[str]:

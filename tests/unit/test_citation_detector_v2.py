@@ -17,7 +17,6 @@ from refcheck.stages.detect_citations.sentence_splitter import (
     extract_sentence_context,
 )
 
-
 # ── Author-Year Parenthetical ──────────────────────────────────
 
 class TestAuthorYearParenthetical:
@@ -63,7 +62,7 @@ class TestAuthorYearParenthetical:
         assert years == {"2020", "2021"}
 
     def test_year_suffix(self) -> None:
-        text = "text (Dzhonova et al., 2018a, 2018b) end"
+        text = "text (Pell et al., 2018a, 2018b) end"
         cits = detect_author_year_parenthetical(text, 0, "")
         split = []
         for c in cits:
@@ -117,7 +116,7 @@ class TestAuthorYearParenthetical:
 
     def test_no_date(self) -> None:
         cits = detect_author_year_parenthetical(
-            "text (Desai et al., n.d.) end", 0, "",
+            "text (Quill et al., n.d.) end", 0, "",
         )
         assert len(cits) == 1
         assert cits[0].year is None
@@ -195,7 +194,7 @@ class TestNumberedCitations:
         assert nums == [1, 2, 3]
 
     def test_superscript(self) -> None:
-        cits = detect_numbered_superscript("text\u00b9\u00b2\u00b3 more", 0, "")
+        detect_numbered_superscript("text\u00b9\u00b2\u00b3 more", 0, "")
         # Superscript ¹²³ may not match our unicode digit pattern
         # This tests the mechanism works if digits are in range
         # Actual superscript ¹ is U+00B9, not in ⁰-⁹ range

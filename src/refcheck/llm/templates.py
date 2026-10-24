@@ -1,6 +1,7 @@
 """Load and render Jinja2 prompt templates from src/refcheck/prompts/."""
 
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
@@ -30,7 +31,7 @@ def load_template(name: str) -> str:
         raise
 
 
-def render_template(name: str, variables: dict[str, str]) -> str:
+def render_template(name: str, variables: Mapping[str, object]) -> str:
     """Load and render a prompt template with variables."""
     env = _get_env()
     try:

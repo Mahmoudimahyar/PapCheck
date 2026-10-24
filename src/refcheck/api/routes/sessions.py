@@ -6,9 +6,10 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import Session as DBSession
 
+from refcheck.api.routes.results_builders import degraded_notices
 from refcheck.db.deps import get_db
 from refcheck.db.models import SessionDB
 from refcheck.db.session_repo import (
@@ -32,6 +33,23 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 _BASE_DIR = Path.home() / ".refcheck" / "sessions"
+
+
+def session_dir_of(session_id: str) -> Path | None:
+    """Where a session's files live (uploads, report, the run's degraded-mode notes).
+
+    None when the id names anything but a folder directly inside the sessions folder
+    (``..``, ``..\\x``, an absolute path), so a caller cannot pick the file read.
+    """
+    base = _BASE_DIR.resolve()
+    session_dir = (base / session_id).resolve()
+    return session_dir if session_dir.parent == base else None
+
+
+class SessionDetail(Session):
+    """Session status plus the run's degraded-mode notices (V5.8; [] = normal run)."""
+
+    degraded_notices: list[str] = Field(default_factory=list)
 
 
 class StartResponse(BaseModel):
@@ -95,21 +113,22 @@ async def create_session(
     )
 
 
-@router.get("/api/sessions/{session_id}", response_model=Session)
+@router.get("/api/sessions/{session_id}", response_model=SessionDetail)
 async def get_session(
     session_id: str,
     db: DBSession = Depends(get_db),
-) -> Session:
-    """Get session status."""
+) -> SessionDetail:
+    """Get session status (and which LLM roles ran degraded in its last run)."""
     sess = db_get_session(db, session_id)
     if not sess:
         raise HTTPException(404, "Session not found")
-    return Session(
+    return SessionDetail(
         id=sess.id,
         status=sess.status,  # type: ignore[arg-type]
         created_at=sess.created_at,
         manuscript_filename=sess.manuscript_filename,
         pdf_count=sess.pdf_count,
+        degraded_notices=degraded_notices(session_dir_of(session_id)),
     )
 
 

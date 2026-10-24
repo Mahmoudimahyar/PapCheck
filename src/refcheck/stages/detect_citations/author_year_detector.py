@@ -47,9 +47,12 @@ _NON_AUTHOR = frozenset({
     "each", "both", "after", "before", "during", "between",
 })
 
+# Leading \b: without it the particle "le" matched the end of "while" and
+# "while Weller et al. (2018)" became the unmappable author "le Weller".
 _NARR_YEAR = re.compile(
-    r"(" + _AUTHOR_GROUP + r")\s+\((" + _YEAR_LIST + r")\)",
+    r"\b(" + _AUTHOR_GROUP + r")\s+\((" + _YEAR_LIST + r")\)",
 )
+_PARTICLE_NAME = re.compile(r"^" + _PARTICLE_WORD + r"(?:\s+" + _PARTICLE_WORD + r")*[\s\-][A-Z]")
 
 
 def detect_author_year_parenthetical(
@@ -125,12 +128,12 @@ def _extract_authors_from_group(text: str) -> list[str]:
     cleaned = re.sub(r"\s+et\s+al\.?", "", text).strip()
     # Split on 'and', '&', or ','
     parts = re.split(r"\s+(?:and|&)\s+|,\s*", cleaned)
-    authors: list[str] = []
-    for p in parts:
-        p = p.strip()
-        if p and p[0:1].isupper():
-            authors.append(p)
-    return authors
+    return [p.strip() for p in parts if looks_like_surname(p.strip())]
+
+
+def looks_like_surname(name: str) -> bool:
+    """Capitalised name, or one led by a particle: "de Sousa" is a surname."""
+    return bool(name) and (name[0:1].isupper() or bool(_PARTICLE_NAME.match(name)))
 
 
 def _extract_first_year(text: str) -> str | None:

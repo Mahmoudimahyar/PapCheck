@@ -8,7 +8,8 @@ const VERDICT_COLORS: Record<string, string> = {
   partially_supported: "#D97706",
   not_supported: "#DC2626",
   contradicted: "#991B1B",
-  cannot_verify: "#9CA3AF",
+  cannot_verify: "#6B7280",
+  not_relevant: "#8B5CF6",
 };
 
 interface ResultsChartProps {
@@ -22,6 +23,7 @@ export function ResultsChart({ summary }: ResultsChartProps) {
     { name: "Not Supported", value: summary.not_supported, key: "not_supported" },
     { name: "Contradicted", value: summary.contradicted, key: "contradicted" },
     { name: "Can't Verify", value: summary.cannot_verify, key: "cannot_verify" },
+    { name: "Not Relevant", value: summary.not_relevant ?? 0, key: "not_relevant" },
   ];
 
   if (summary.total === 0) {
@@ -35,12 +37,20 @@ export function ResultsChart({ summary }: ResultsChartProps) {
   return (
     <ResponsiveContainer width="100%" height={200}>
       <BarChart data={data} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
-        <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-        <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-        <Tooltip />
+        <XAxis dataKey="name" tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} />
+        <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} />
+        <Tooltip
+          cursor={{ fill: "var(--border)" }}
+          contentStyle={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--card-foreground)" }}
+          itemStyle={{ color: "var(--card-foreground)" }}
+        />
         <Bar dataKey="value" radius={[4, 4, 0, 0]}>
           {data.map((entry) => (
-            <Cell key={entry.key} fill={VERDICT_COLORS[entry.key] ?? "#9CA3AF"} />
+            <Cell
+              key={entry.key}
+              fill={VERDICT_COLORS[entry.key] ?? "#6B7280"}
+              className={entry.key === "contradicted" ? "dark:fill-red-400" : undefined}
+            />
           ))}
         </Bar>
       </BarChart>

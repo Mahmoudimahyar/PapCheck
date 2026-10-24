@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useMemo, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ManuscriptViewer } from "@/components/refcheck/manuscript-viewer";
@@ -9,6 +9,9 @@ import { HighlightLegend } from "@/components/refcheck/highlight-legend";
 import { BreadcrumbNav } from "@/components/refcheck/breadcrumb-nav";
 import { getManuscript } from "@/lib/api";
 import type { ManuscriptResponse } from "@/lib/types";
+
+// Below lg the evidence panel stacks under the whole manuscript, so it must be scrolled on screen.
+const isStacked = () => !window.matchMedia("(min-width: 1024px)").matches;
 
 export default function ViewerPage({
   params,
@@ -23,6 +26,21 @@ export default function ViewerPage({
   const [verdictFilter, setVerdictFilter] = useState<string | null>(null);
   const [showModelOpinions, setShowModelOpinions] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (selectedClaimId != null && isStacked()) {
+      panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [selectedClaimId]);
+
+  const handleClose = useCallback(() => {
+    if (selectedClaimId != null && isStacked()) {
+      document.querySelector(`[data-claim-id="${selectedClaimId}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    setSelectedClaimId(null);
+  }, [selectedClaimId]);
 
   useEffect(() => {
     setLoading(true);
@@ -79,7 +97,7 @@ export default function ViewerPage({
     return (
       <div className="max-w-7xl mx-auto space-y-4">
         <BreadcrumbNav sessionId={sessionId} current="viewer" />
-        <p className="text-red-500">Failed to load manuscript: {error}</p>
+        <p className="text-red-600 dark:text-red-400">Failed to load manuscript: {error}</p>
         <Link href={`/verify/${sessionId}/results`}>
           <Button variant="outline">Back to Results</Button>
         </Link>
@@ -117,12 +135,13 @@ export default function ViewerPage({
             onClaimClick={setSelectedClaimId}
           />
         </div>
-        <div className="overflow-hidden">
+        {/* min-h lets the stacked panel scroll fully into view while its evidence is still loading */}
+        <div ref={panelRef} className={`overflow-hidden ${selectedClaimId != null ? "max-lg:min-h-svh" : ""}`}>
           <EvidencePanel
             sessionId={sessionId}
             claimId={selectedClaimId}
             onNavigate={handleNavigate}
-            onClose={() => setSelectedClaimId(null)}
+            onClose={handleClose}
             showModelOpinions={showModelOpinions}
             showDetails={showDetails}
           />

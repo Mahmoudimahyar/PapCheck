@@ -50,9 +50,8 @@ def detect_missing_citations(
     uncited = _filter_uncited(all_sentences, cited_ranges)
     flagged = _heuristic_flag(uncited)
 
-    # Assign IDs
-    for i, mc in enumerate(flagged, 1):
-        mc.id = i
+    # Assign IDs via model_copy (Pydantic-safe, no direct mutation)
+    flagged = [mc.model_copy(update={"id": i}) for i, mc in enumerate(flagged, 1)]
 
     logger.info(
         "Missing citation: %d uncited sentences, %d flagged",
@@ -128,10 +127,11 @@ def _heuristic_flag(
         text = sent.sentence_text
         for pattern, category, reason in _HIGH_PRIORITY:
             if pattern.search(text):
-                sent.confidence = 0.8
-                sent.category = category
-                sent.reason = reason
-                sent.suggestion = f"Consider adding a citation: {reason}"
-                flagged.append(sent)
+                flagged.append(sent.model_copy(update={
+                    "confidence": 0.8,
+                    "category": category,
+                    "reason": reason,
+                    "suggestion": f"Consider adding a citation: {reason}",
+                }))
                 break
     return flagged

@@ -4,12 +4,15 @@ import re
 
 from refcheck.api.routes.manuscript_schemas import (
     ManuscriptParagraph,
+    ModelReasoningResponse,
     ParagraphClaim,
     VerificationEvidence,
 )
+from refcheck.api.routes.results_builders import partial_fields
 from refcheck.models.claim import Claim
 from refcheck.models.reference import ManuscriptSection, Reference
 from refcheck.models.verification import VerificationResult
+from refcheck.stages.generate_report.result_signals import result_signals
 
 
 def group_verifications(
@@ -109,6 +112,20 @@ def build_verification_evidences(
         atomic = None
         if v.atomic_results:
             atomic = [a.model_dump() for a in v.atomic_results]
+        mr_list = [
+            ModelReasoningResponse(
+                model_name=mr.model_name,
+                model_display=mr.model_display,
+                verdict=mr.verdict, confidence=mr.confidence,
+                reasoning=mr.reasoning,
+                evidence_quotes=mr.evidence_quotes,
+                source_section_preview=mr.source_section_preview,
+                response_time_ms=mr.response_time_ms,
+                input_tokens=mr.input_tokens,
+                output_tokens=mr.output_tokens,
+            )
+            for mr in v.model_reasoning
+        ]
         evidences.append(VerificationEvidence(
             reference_id=v.reference_id,
             reference_title=ref.title if ref else "",
@@ -121,5 +138,12 @@ def build_verification_evidences(
             atomic_results=atomic,
             user_override=v.user_override,
             user_override_reason=v.user_override_reason,
+            model_reasoning=mr_list,
+            cannot_verify_reason=v.cannot_verify_reason,
+            source_coverage=v.source_coverage,
+            section_relevance=v.section_relevance,
+            text_quality_score=v.text_quality_score,
+            signals=result_signals(v),
+            **partial_fields(v).model_dump(),
         ))
     return evidences

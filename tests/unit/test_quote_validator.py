@@ -1,11 +1,10 @@
 """Tests for post-hoc evidence quote validation."""
 
-import pytest
 
 from refcheck.stages.verify_claims.quote_validator import (
-    QuoteValidation,
     validate_quotes,
 )
+from refcheck.stages.verify_claims.source_cleaning import join_lines, sanitize_source_text
 
 _SOURCE_TEXT = (
     "Drug X was associated with a significant reduction in mortality rates. "
@@ -94,3 +93,64 @@ class TestValidateQuotes:
 
         # Lenient should find it more easily
         assert lenient[0].similarity >= strict[0].similarity
+
+
+class TestPdfNormalization:
+    """V5: PDF artefacts must not reject genuine quotes."""
+
+    def test_ligatures_and_soft_hyphens(self) -> None:
+        source = "The e\ufb03cacy of the treat\u00adment was signi\ufb01cant."
+        result = validate_quotes(["The efficacy of the treatment was significant"], source)[0]
+        assert result.found_in_source and result.similarity == 1.0
+
+    def test_line_break_hyphenation(self) -> None:
+        source = "facilitate clearance of aggregation- prone proteins such as A\u03b2[20], [21]."
+        quote = "facilitate clearance of aggregation-prone proteins such as A\u03b2."
+        assert validate_quotes([quote], source)[0].similarity == 1.0
+
+    def test_citation_markers_and_curly_quotes_ignored(self) -> None:
+        source = "Autophagy is a \u201ckey\u201d pathway (12, 13) for clearance of proteins [4]."
+        quote = 'Autophagy is a "key" pathway for clearance of proteins'
+        assert validate_quotes([quote], source)[0].similarity == 1.0
+
+    def test_case_and_dash_variants(self) -> None:
+        source = "RESULTS SHOWED A 30% DECREASE IN ALL\u2013CAUSE MORTALITY."
+        quote = "results showed a 30% decrease in all-cause mortality"
+        assert validate_quotes([quote], source)[0].found_in_source
+
+    def test_offsets_point_into_original_source(self) -> None:
+        source = "Intro text here.  The e\ufb03cacy\nwas   high in mice. Tail text."
+        result = validate_quotes(["The efficacy was high in mice"], source)[0]
+        assert result.char_start is not None and result.char_end is not None
+        assert source[result.char_start:result.char_end] == result.best_match
+        assert result.best_match == "The e\ufb03cacy\nwas   high in mice"
+
+    def test_numbers_must_match(self) -> None:
+        result = validate_quotes(["Results showed a 45% decrease in mortality"], _SOURCE_TEXT)[0]
+        assert result.similarity < 1.0
+
+    def test_long_source_is_fast(self) -> None:
+        source = ("Filler sentence about unrelated laboratory routines. " * 4000
+                  + "Rapamycin lowered amyloid levels in treated mice.")
+        result = validate_quotes(["Rapamycin lowered amyloid levels in treated mice"], source)[0]
+        assert result.found_in_source and result.best_match is not None
+
+
+class TestNormalisationConsistency:
+    """M9: source text is NFKC-normalised before retrieval; quotes must still validate."""
+
+    def test_plain_quote_against_ligature_source(self) -> None:
+        source = "Encapsulation was useful in preventing hyperﬁbrosis and promoting ﬂow."
+        result = validate_quotes(["preventing hyperfibrosis and promoting flow"], source)[0]
+        assert result.found_in_source and result.similarity == 1.0
+
+    def test_ligature_quote_against_sanitized_source(self) -> None:
+        source = sanitize_source_text("Pores of 5 µm limited ﬁbrosis（n = 4）.")
+        assert "ﬁ" not in source and "µ" not in source
+        result = validate_quotes(["Pores of 5 µm limited ﬁbrosis (n = 4)"], source)[0]
+        assert result.found_in_source
+
+    def test_line_break_compound_hyphen(self) -> None:
+        source = join_lines(["CD4+ T-", "cell infiltration fell."])
+        assert source == "CD4+ T-cell infiltration fell."
+        assert validate_quotes(["CD4+ T-cell infiltration fell"], source)[0].found_in_source

@@ -122,13 +122,13 @@ class TestParseAuthorsTitle:
     def test_vancouver_bracket_format(self) -> None:
         """[N] Initial. Surname, Initial. Surname, Title, Journal."""
         text = (
-            "[2] A. Courties, I. Kouki, N. Soliman, "
-            "Osteoarthritis year in review 2024, "
-            "Osteoarthritis Cartilage, 32 (2024) 1397."
+            "[2] A. Lorne, I. Pell, N. Quill, "
+            "Synthetic gels year in review 2024, "
+            "Synth Gel Rep, 32 (2024) 1397."
         )
         authors, title = parse_authors_title(text)
         assert len(authors) >= 2
-        assert "Osteoarthritis year in review" in title
+        assert "Synthetic gels year in review" in title
 
     def test_dot_format(self) -> None:
         """1. Author A, Author B. Title. Journal."""
@@ -139,12 +139,12 @@ class TestParseAuthorsTitle:
     def test_no_authors_group_study(self) -> None:
         """Group study with no named authors."""
         text = (
-            "[1] Global, regional, and national burden of osteoarthritis, "
-            "Lancet Rheumatol, 5 (2023) e508."
+            "[1] Worldwide, local, and national load of model disease X, "
+            "Synth Rheumatol, 5 (2023) e100."
         )
         # Should return the whole title even without authors
         _authors, title = parse_authors_title(text)
-        assert "Global" in title or "burden" in title
+        assert "Worldwide" in title or "load" in title
 
 
 class TestParseSingleReference:

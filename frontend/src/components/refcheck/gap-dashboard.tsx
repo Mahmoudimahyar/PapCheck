@@ -19,9 +19,9 @@ export function GapDashboard({ references }: GapDashboardProps) {
   return (
     <div className="flex flex-wrap gap-3">
       <StatBadge label="Total" count={references.length} />
-      <StatBadge label="Matched" count={matched} color="text-success" />
+      <StatBadge label="Matched" count={matched} color="text-green-700 dark:text-success" />
       <StatBadge label="Found" count={found} color="text-info" />
-      <StatBadge label="Paywalled" count={paywalled} color="text-warning" />
+      <StatBadge label="Paywalled" count={paywalled} color="text-amber-700 dark:text-warning" />
       <StatBadge label="Not Found" count={notFound} color="text-destructive" />
       {errors > 0 && <StatBadge label="Errors" count={errors} color="text-destructive" />}
     </div>

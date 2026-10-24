@@ -3,7 +3,7 @@ Prompt: claim_extraction
 Purpose: Extract claim-citation pairs from a manuscript section
 Input variables: section_text, reference_list, section_heading
 Output schema: {"claims": list[Claim]}
-Model: claude-sonnet-4-5-20250514
+Role: utility (model resolved by refcheck.llm roles; never hard-coded)
 -->
 
 # System Instructions

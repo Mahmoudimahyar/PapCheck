@@ -36,7 +36,7 @@ Prompt: {name}
 Purpose: {one-line description}
 Input variables: {list of Jinja2 variables}
 Output schema: {Pydantic model name}
-Model: {recommended model, e.g., claude-sonnet-4-5-20250514}
+Role: {LLM role, e.g., verifier / judge / utility — models are resolved by role, never named here}
 -->
 
 # System Instructions
@@ -83,18 +83,53 @@ Run the same claim through two different prompt framings:
 - **Generous prompt:** "You are a charitable reader. Only flag a claim if it clearly misrepresents the source. Give benefit of the doubt for reasonable paraphrasing."
 Agreement between both = high confidence. Disagreement = genuine ambiguity worth human review.
 
+### Technique 6: Rendered partial-verdict taxonomy (V5.4)
+The verifier/judge/confirm rubric must never hand-copy the taxonomy. `prompts/verify_taxonomy.md`
+(included by the `rubric` section of `verify_claim.md`) renders the benign guards, rules R1–R7
+(minus R2, an eval-labelling rule) and the six genuine partial types in precedence order (decision
+sentence + first synthetic example each) from `prompts/partial_taxonomy.json` at build time via
+`stages/verify_claims/taxonomy_prompt.system_variables()`. **Always pass those system variables**:
+the partial renders nothing without `taxonomy`, so a call that passes only `{"section": "system"}`
+silently loses the rubric. The model returns `partial_type` (one id or `"none"`),
+`unsupported_elements` (≤5 phrases; they drive the evidence re-check) and `benign_notes`.
+- **Co-cited block:** the user prompt lists up to 3 other references of the same sentence
+  (number, title, abstract ≤250 tokens) as untrusted context; an element one of them states is
+  not this reference's problem (`cocited_share`).
+- **Evidence re-check:** `pack_kind="recheck"` labels a pack made of the standard passages plus
+  passages searched for each unsupported element (layer `verifier_recheck`, ≤8,000 tokens).
+- **Size:** the taxonomy adds ~1.8k tokens to the cached system prompt (verifier ≈3.9k o200k
+  tokens). Keep additions to the rubric in the JSON file, not in the template.
+- Synthetic examples only (the taxonomy shares no 6-word phrase with the evaluation manuscript);
+  never paste real manuscript or paper text into a prompt file.
+
+### Technique 7: Cache-pinned prompts and targeted new calls (V5.7)
+Every V5.7 change is deterministic code or a NEW call on a small subset, so the default-mode
+verifier / judge / confirm prompts and the V5.5 output schema stay byte-identical (hash-pinned in
+`tests/unit/test_verify_clearance_mode.py`) and cached answers are reused; the element adjudicator
+(`adjudicate_elements.md`) and union (`adjudicate_cocited.md`) prompts are unchanged too.
+- **Slot audit (#2):** reuses `adjudicate_elements.md` with slot elements such as
+  "time frame: 'every year'" (layer `adjudicate_slots`).
+- **Slot probe (#15, experimental, `REFCHECK_SLOT_PROBE=on`):** `prompts/slot_probe.md`, role
+  adjudicator, task `verify_slot_probe`. The model sees the pack and the cited span with its
+  relation / direction / population words masked — never the claim's own words (CoVe / QAGS) —
+  and code compares its answers; a differing answer with an exact ≥5-word quote becomes an
+  element for one element-adjudicator call (layer `slot_probe`).
+
 ## LLM Call Pattern
 
 ```python
 # All LLM calls go through this wrapper — never call litellm/anthropic/openai directly
-from refcheck.llm.client import call_llm
-from refcheck.models.verification import VerificationResult
+from refcheck.llm import call_llm
+from refcheck.models.verification import JudgeOutput
 
 result = await call_llm(
-    template="grounded_verification",      # → loads prompts/grounded_verification.md
-    variables={"claim": claim, "source_text": source_text},
-    output_model=VerificationResult,       # Pydantic validation
-    model="claude-sonnet-4-5-20250514",    # or configured via litellm
+    template="verify_claim",               # → loads prompts/verify_claim.md
+    variables={"claim": claim, "passages": render_pack(pack)},  # retrieved passages, never whole papers
+    output_model=JudgeOutput,              # Pydantic validation (strict JSON schema)
+    role="verifier",                       # model picked by role (llm/model_registry.py), never by name
+    system_template="verify_claim",        # cacheable rubric ...
+    system_variables=system_variables(),   # ... with the taxonomy (verify_claims/taxonomy_prompt.py)
+    cost_tracker=tracker, task="verify_verifier",
 )
 ```
 

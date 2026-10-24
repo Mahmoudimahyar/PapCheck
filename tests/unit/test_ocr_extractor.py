@@ -1,10 +1,9 @@
 """Tests for OCR extractor and PDF text extraction."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import fitz
-import pytest
 
 from refcheck.stages.match_pdfs.ocr_extractor import (
     extract_text_with_ocr_fallback,
